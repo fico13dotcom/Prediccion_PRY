@@ -140,6 +140,16 @@ st.markdown(
         color: #1E1B4B;
         font-weight: 600;
     }
+    .info-box {
+        background: rgba(255,255,255,0.78);
+        border: 1px solid rgba(226,232,240,0.95);
+        border-radius: 18px;
+        padding: 14px 16px;
+        margin: 10px 0 16px 0;
+        color: #334155;
+        box-shadow: 0 8px 20px rgba(15,23,42,0.05);
+        line-height: 1.55;
+    }
     div[data-testid="stMetric"] {
         background: rgba(255,255,255,0.84);
         border: 1px solid rgba(226,232,240,0.92);
@@ -789,6 +799,15 @@ def generar_insights(df_largo):
 
 
 def calcular_metricas_modelos(df_preparado, pred_wide):
+    """
+    Calcula métricas de evaluación por producto usando los valores reales del archivo cargado
+    frente a las predicciones generadas por cada modelo PKL.
+
+    Métricas principales:
+    - MAE: error absoluto promedio en unidades.
+    - RMSE: error cuadrático medio, penaliza más los errores grandes.
+    - R²: capacidad explicativa del modelo. Mayor es mejor.
+    """
     filas_metricas = []
 
     base = df_preparado[["fecha"] + PRODUCTOS].copy()
@@ -802,7 +821,10 @@ def calcular_metricas_modelos(df_preparado, pred_wide):
             suffixes=("_real", "_predicho")
         )
 
-        df_eval = df_eval.rename(columns={f"{producto}_real": "real", f"{producto}_predicho": "prediccion"})
+        df_eval = df_eval.rename(columns={
+            f"{producto}_real": "real",
+            f"{producto}_predicho": "prediccion"
+        })
         df_eval["real"] = pd.to_numeric(df_eval["real"], errors="coerce").fillna(0)
         df_eval["prediccion"] = pd.to_numeric(df_eval["prediccion"], errors="coerce").fillna(0)
 
@@ -810,16 +832,8 @@ def calcular_metricas_modelos(df_preparado, pred_wide):
         y_pred = df_eval["prediccion"].to_numpy(dtype=float)
         n = len(df_eval)
 
+        mae = float(np.mean(np.abs(y_true - y_pred))) if n else np.nan
         rmse = float(np.sqrt(np.mean((y_true - y_pred) ** 2))) if n else np.nan
-        sesgo = float(np.mean(y_pred - y_true)) if n else np.nan
-
-        mask_mape = y_true != 0
-        if mask_mape.any():
-            mape = float(np.mean(np.abs((y_true[mask_mape] - y_pred[mask_mape]) / y_true[mask_mape])) * 100)
-            precision_aprox = max(0.0, 100.0 - mape)
-        else:
-            mape = np.nan
-            precision_aprox = np.nan
 
         ss_res = float(np.sum((y_true - y_pred) ** 2)) if n else np.nan
         ss_tot = float(np.sum((y_true - np.mean(y_true)) ** 2)) if n else np.nan
@@ -831,28 +845,34 @@ def calcular_metricas_modelos(df_preparado, pred_wide):
             "Registros evaluados": n,
             "Total real": int(round(float(np.sum(y_true)))) if n else 0,
             "Total predicho": int(round(float(np.sum(y_pred)))) if n else 0,
+            "MAE": mae,
             "RMSE": rmse,
-            "MAPE %": mape,
-            "Precisión aprox. %": precision_aprox,
             "R²": r2,
-            "Sesgo promedio": sesgo,
         })
 
     metricas = pd.DataFrame(filas_metricas)
-    metricas["ranking_valor"] = metricas["MAPE %"].fillna(metricas["RMSE"])
+
+    # El ranking principal usa RMSE porque penaliza con más fuerza los errores grandes.
+    # Para demanda diaria, esto ayuda a identificar productos con picos mal estimados.
+    metricas["ranking_valor"] = metricas["RMSE"]
     metricas = metricas.sort_values("ranking_valor", ascending=True).reset_index(drop=True)
     metricas["Ranking"] = np.arange(1, len(metricas) + 1)
+
     return metricas
 
 
 def formatear_metricas(metricas):
     columnas = [
-        "Ranking", "Modelo", "Registros evaluados", "Total real", "Total predicho",
-        "RMSE", "MAPE %", "Precisión aprox. %", "R²", "Sesgo promedio"
+        "Ranking", "Modelo", "Registros evaluados",
+        "Total real", "Total predicho",
+        "MAE", "RMSE", "R²"
     ]
+
     df = metricas[columnas].copy()
-    for col in ["RMSE", "MAPE %", "Precisión aprox. %", "R²", "Sesgo promedio"]:
-        df[col] = df[col].apply(lambda x: "N/A" if pd.isna(x) else round(float(x), 2))
+
+    for col in ["MAE", "RMSE", "R²"]:
+        df[col] = df[col].apply(lambda x: "N/A" if pd.isna(x) else round(float(x), 3))
+
     return df
 
 
@@ -914,26 +934,61 @@ def grafico_mensual(df_largo):
     return fig
 
 
-def grafico_error_por_producto(metricas):
-    df_plot = metricas.copy()
-    df_plot["Error usado"] = df_plot["MAPE %"]
-    df_plot["Métrica"] = "MAPE %"
-    mask_sin_mape = df_plot["Error usado"].isna()
-    df_plot.loc[mask_sin_mape, "Error usado"] = df_plot.loc[mask_sin_mape, "RMSE"]
-    df_plot.loc[mask_sin_mape, "Métrica"] = "RMSE"
-    df_plot = df_plot.sort_values("ranking_valor", ascending=True)
-    df_plot["Etiqueta"] = df_plot["Error usado"].apply(lambda x: formato_decimal(x, 2))
+def grafico_mae_rmse_por_producto(metricas):
+    df_plot = metricas[["Modelo", "MAE", "RMSE"]].copy()
+    df_plot = df_plot.melt(
+        id_vars="Modelo",
+        value_vars=["MAE", "RMSE"],
+        var_name="Métrica",
+        value_name="Valor"
+    )
+    df_plot["Etiqueta"] = df_plot["Valor"].apply(lambda x: formato_decimal(x, 2))
 
     fig = px.bar(
         df_plot,
         x="Modelo",
-        y="Error usado",
+        y="Valor",
         color="Métrica",
-        title="Error por producto: menor es mejor",
-        labels={"Modelo": "Producto", "Error usado": "Error", "Métrica": "Métrica usada"},
-        text="Etiqueta"
+        barmode="group",
+        text="Etiqueta",
+        title="Errores por producto: MAE y RMSE",
+        labels={
+            "Modelo": "Producto",
+            "Valor": "Error en unidades",
+            "Métrica": "Métrica"
+        }
     )
-    fig.update_layout(height=420, title_font_size=20, margin=dict(l=20, r=20, t=60, b=20))
+    fig.update_layout(
+        height=420,
+        title_font_size=20,
+        legend_title_text="Métrica",
+        margin=dict(l=20, r=20, t=60, b=20)
+    )
+    aplicar_estilo_barras(fig)
+    return fig
+
+
+def grafico_r2_por_producto(metricas):
+    df_plot = metricas[["Modelo", "R²"]].copy()
+    df_plot["R²_plot"] = df_plot["R²"].fillna(0)
+    df_plot["Etiqueta"] = df_plot["R²"].apply(lambda x: "N/A" if pd.isna(x) else formato_decimal(x, 3))
+
+    fig = px.bar(
+        df_plot,
+        x="Modelo",
+        y="R²_plot",
+        text="Etiqueta",
+        title="R² por producto: mayor es mejor",
+        labels={
+            "Modelo": "Producto",
+            "R²_plot": "R²"
+        }
+    )
+    fig.update_layout(
+        height=420,
+        title_font_size=20,
+        margin=dict(l=20, r=20, t=60, b=20)
+    )
     aplicar_estilo_barras(fig)
     return fig
 
@@ -1035,6 +1090,10 @@ def mostrar_insight(texto):
     st.markdown(f'<div class="insight">{texto}</div>', unsafe_allow_html=True)
 
 
+def mostrar_info(texto):
+    st.markdown(f'<div class="info-box">{texto}</div>', unsafe_allow_html=True)
+
+
 # ============================================================
 # INTERFAZ
 # ============================================================
@@ -1044,8 +1103,9 @@ st.markdown(
     <div class="hero">
         <h1>Predicción de demanda de platos</h1>
         <p>
-            Carga un archivo Excel o CSV para evaluar datos históricos o genera una predicción futura de 6 meses.
-            La app usa los modelos PKL y el archivo config_entrenamiento.pkl si está disponible.
+            Carga un archivo Excel o CSV para evaluar datos históricos o genera una predicción futura.
+            La app usa modelos PKL y el archivo config_entrenamiento.pkl para estimar demanda por producto,
+            revisar resultados por periodo y evaluar la calidad del modelo con MAE, RMSE y R².
         </p>
     </div>
     """,
@@ -1054,14 +1114,33 @@ st.markdown(
 
 with st.sidebar:
     st.markdown("### Panel de control")
+    st.caption(
+        "Desde este panel defines el flujo de trabajo de la app. "
+        "Cada opción cambia la forma en que se preparan los datos y el tipo de resultados que se muestran."
+    )
 
     modo = st.radio(
         "Modo de ejecución",
         ["Archivo cargado", "Predicción futura 6 meses"],
-        help="Archivo cargado evalúa o predice fechas del archivo. Predicción futura genera fechas hacia adelante."
+        help=(
+            "Archivo cargado: procesa un Excel/CSV histórico y permite calcular métricas si existen valores reales. "
+            "Predicción futura: genera fechas futuras y estima demanda sin comparar contra valores reales."
+        )
     )
 
+    if modo == "Archivo cargado":
+        st.info(
+            "Este modo lee el archivo cargado, valida columnas, limpia datos, genera variables predictoras, "
+            "aplica los modelos y calcula MAE, RMSE y R² cuando hay valores reales."
+        )
+    else:
+        st.info(
+            "Este modo crea un calendario futuro de lunes a viernes, usa los precios configurados y genera "
+            "una estimación de demanda. No calcula métricas porque no existen valores reales futuros."
+        )
+
     st.markdown("### Configuración detectada")
+    st.caption("Información tomada de config_entrenamiento.pkl o de la configuración por defecto.")
     st.caption(f"Versión config: {CONFIG.get('version', 'Sin config')}")
     st.caption(f"Modelo: {CONFIG.get('modelo', 'No definido')}")
     st.caption(f"Rango modelo: {RANGO_HISTORICO_MIN.date()} a {RANGO_HISTORICO_MAX.date()}")
@@ -1102,6 +1181,11 @@ with st.sidebar:
 
 
 st.markdown('<div class="section-title">Diagnóstico de modelos cargados</div>', unsafe_allow_html=True)
+mostrar_info(
+    "Esta sección valida los modelos disponibles en la carpeta <b>modelos</b>. "
+    "Muestra el tipo de modelo, la cantidad de variables usadas por cada PKL y si existe diferencia "
+    "frente al archivo de configuración. Sirve para detectar incompatibilidades antes de ejecutar predicciones."
+)
 diag_general = diagnostico_modelos()
 if not diag_general.empty:
     st.dataframe(diag_general, use_container_width=True, hide_index=True)
@@ -1144,6 +1228,10 @@ if modo == "Archivo cargado":
     errores, advertencias = validar_estructura(df_original)
 
     st.markdown('<div class="section-title">Vista previa del archivo cargado</div>', unsafe_allow_html=True)
+    mostrar_info(
+        "La vista previa permite verificar que el archivo fue leído correctamente. "
+        "En este punto todavía no se ejecutan los modelos; primero se revisa estructura, fechas, productos y columnas mínimas."
+    )
     st.dataframe(df_original.head(20), use_container_width=True)
 
     if errores:
@@ -1274,8 +1362,10 @@ with st.expander("Ver variables usadas en la predicción"):
 # Evaluación solo con datos reales
 if metricas_modelos is not None and not metricas_modelos.empty:
     st.markdown('<div class="section-title">Evaluación de calidad por producto</div>', unsafe_allow_html=True)
-    st.caption(
-        "Cada PKL corresponde a un producto distinto. Esta comparación identifica qué producto está siendo predicho con mejor precisión."
+    mostrar_info(
+        "Esta sección compara los valores reales del archivo cargado contra las predicciones generadas por cada modelo. "
+        "Cada PKL corresponde a un producto específico; por eso la comparación indica qué producto está siendo mejor estimado, "
+        "no que un modelo pueda aplicarse a otro plato. Las métricas principales son <b>MAE</b>, <b>RMSE</b> y <b>R²</b>."
     )
 
     mejor_fila = metricas_modelos.iloc[0]
@@ -1285,42 +1375,84 @@ if metricas_modelos is not None and not metricas_modelos.empty:
     with m1:
         st.metric("Mejor predicción", mejor_fila["Modelo"])
     with m2:
-        criterio = f"MAPE {mejor_fila['MAPE %']:.2f}%" if pd.notna(mejor_fila["MAPE %"]) else f"RMSE {mejor_fila['RMSE']:.2f}"
-        st.metric("Criterio", criterio)
+        st.metric("Criterio", f"Menor RMSE: {mejor_fila['RMSE']:.2f}")
     with m3:
         st.metric("Requiere revisión", peor_fila["Modelo"])
     with m4:
         st.metric("Total real evaluado", formato_entero(df_preparado[PRODUCTOS].sum().sum()))
 
-    mostrar_insight(f"El producto con mejor comportamiento predictivo es **{mejor_fila['Modelo']}**.")
-    mostrar_insight(f"El producto que requiere más revisión es **{peor_fila['Modelo']}**.")
+    cmet1, cmet2, cmet3 = st.columns(3)
+    with cmet1:
+        st.metric("MAE mejor modelo", formato_decimal(mejor_fila["MAE"], 2))
+    with cmet2:
+        st.metric("RMSE mejor modelo", formato_decimal(mejor_fila["RMSE"], 2))
+    with cmet3:
+        st.metric("R² mejor modelo", formato_decimal(mejor_fila["R²"], 3))
+
+    mostrar_insight(
+        f"El producto con mejor comportamiento predictivo es **{mejor_fila['Modelo']}**, "
+        f"porque tiene el menor RMSE dentro de la evaluación."
+    )
+    mostrar_insight(
+        f"El producto que requiere más revisión es **{peor_fila['Modelo']}**, "
+        f"porque presenta el error más alto según RMSE."
+    )
 
     with st.expander("Ver ranking y explicación de métricas", expanded=True):
         st.dataframe(formatear_metricas(metricas_modelos), use_container_width=True, hide_index=True)
         st.markdown(
             """
             **Cómo leer esta sección:**  
-            - **RMSE:** penaliza más errores grandes. Menor es mejor.  
-            - **MAPE:** error porcentual promedio. Menor es mejor.  
-            - **Precisión aprox.:** cálculo referencial basado en `100 - MAPE`. Mayor es mejor.  
-            - **Sesgo promedio:** positivo = sobreestima; negativo = subestima.
+
+            - **MAE (Mean Absolute Error):** mide el error promedio en unidades reales.  
+              Si el MAE es 10, el modelo se equivoca en promedio por 10 platos. Menor es mejor.
+
+            - **RMSE (Root Mean Squared Error):** mide error en unidades, pero penaliza más los errores grandes.  
+              Es útil para detectar productos donde el modelo puede fallar mucho en ciertos días. Menor es mejor.
+
+            - **R² (coeficiente de determinación):** indica qué tanto el modelo explica la variabilidad de los datos reales.  
+              Un valor cercano a 1 es mejor. Si es negativo, el modelo puede funcionar peor que una predicción basada en el promedio.
             """
         )
 
+    st.markdown("#### Gráficos de métricas")
+    mostrar_info(
+        "Los gráficos comparan el desempeño de cada producto. MAE y RMSE se leen en unidades de platos, "
+        "mientras que R² mide capacidad explicativa. En MAE/RMSE menor es mejor; en R² mayor es mejor."
+    )
+
     g1, g2 = st.columns(2)
     with g1:
-        st.plotly_chart(grafico_error_por_producto(metricas_modelos), use_container_width=True)
+        st.plotly_chart(grafico_mae_rmse_por_producto(metricas_modelos), use_container_width=True)
     with g2:
-        st.plotly_chart(grafico_totales_real_predicho(metricas_modelos), use_container_width=True)
+        st.plotly_chart(grafico_r2_por_producto(metricas_modelos), use_container_width=True)
+
+    st.plotly_chart(grafico_totales_real_predicho(metricas_modelos), use_container_width=True)
 
 elif resultados.get("tipo_resultado") == "futuro":
-    st.info("La evaluación de métricas no se muestra en modo futuro porque no existen valores reales contra los cuales comparar.")
+    st.info(
+        "La evaluación de métricas no se muestra en modo futuro porque no existen valores reales contra los cuales comparar. "
+        "En este modo solo se generan estimaciones de demanda."
+    )
 
 
 # Consulta por periodo
 st.markdown('<div class="section-title">Consulta por periodo</div>', unsafe_allow_html=True)
+mostrar_info(
+    "Esta sección permite explorar la predicción a distintos niveles. "
+    "Selecciona <b>Día</b> para revisar una fecha específica, <b>Semana</b> para acumular la demanda semanal "
+    "o <b>Mes</b> para analizar el total mensual estimado."
+)
 
-nivel = st.radio("Selecciona el nivel de consulta", ["Día", "Semana", "Mes"], horizontal=True)
+nivel = st.radio(
+    "Selecciona el nivel de consulta",
+    ["Día", "Semana", "Mes"],
+    horizontal=True,
+    help=(
+        "Día muestra una fecha puntual. Semana acumula todos los días de la semana seleccionada. "
+        "Mes agrupa todas las predicciones del mes elegido."
+    )
+)
 
 fecha_min_date = pred_diaria["fecha"].min().date()
 fecha_max_date = pred_diaria["fecha"].max().date()
