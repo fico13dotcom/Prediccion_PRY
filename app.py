@@ -1,10 +1,11 @@
 # ============================================================
 # APP DE PREDICCIÓN DE DEMANDA DE PLATOS
 # Streamlit + Plotly + modelos PKL + config_entrenamiento.pkl
-# Versión actualizada para predicción histórica y futura 6 meses
+# Versión compatible con selección automática de modelos por producto
 # ============================================================
 
 import io
+import json
 import re
 import warnings
 from pathlib import Path
@@ -30,21 +31,34 @@ st.set_page_config(
 APP_DIR = Path(__file__).parent
 RUTA_MODELOS = APP_DIR / "modelos"
 RUTA_CONFIG = RUTA_MODELOS / "config_entrenamiento.pkl"
+RUTA_CONFIG_JSON = RUTA_MODELOS / "config_entrenamiento.json"
 
 CONFIG_DEFAULT = {
     "version": "default",
-    "modelo": "RandomForestRegressor",
+    "modelo": "Seleccion_automatica_por_producto",
+    "enfoque": "un_modelo_por_producto_con_seleccion_automatica",
     "productos": ["almuerzo", "sopa", "fanesca", "colada_morada"],
     "variables_predictoras": [
         "anio", "mes", "dia_mes", "dia_semana_num", "semana_anio",
         "es_fanesca_temporada", "es_colada_temporada",
-        "tendencia", "crecimiento_anual",
+        "es_inicio_mes", "es_quincena", "es_fin_mes",
+        "es_lunes", "es_martes", "es_miercoles", "es_jueves", "es_viernes",
+        "mes_sin", "mes_cos", "dia_semana_sin", "dia_semana_cos",
+        "tendencia", "tendencia_log", "crecimiento_anual",
         "preciomenu", "preciosopa", "fanesca_precio", "coladamorada_precio"
     ],
     "fecha_min_modelo": "2023-01-02",
     "fecha_max_modelo": "2025-12-31",
     "temporada_colada_morada": {"inicio_mes": 10, "inicio_dia": 1, "fin_mes": 11, "fin_dia": 4},
-    "temporada_fanesca": {"meses": [3, 4]},
+    "temporada_fanesca": {"meses": [2, 3]},
+    "base_ciclo_dia_semana": 5,
+    "modelo_por_producto": {},
+    "criterio_seleccion": {
+        "principal": "Menor RMSE en validación",
+        "secundarios": ["Menor MAE", "Mayor R²"]
+    },
+    "modelos_candidatos": [],
+    "razon_por_producto": {},
     "parametros_modelo": {}
 }
 
@@ -187,11 +201,39 @@ st.markdown(
 
 @st.cache_resource(show_spinner=False)
 def cargar_config():
+    """
+    Carga la configuración del entrenamiento.
+
+    Compatibilidad V5:
+    - config_entrenamiento.pkl puede contener la configuración base.
+    - config_entrenamiento.json puede contener metadatos adicionales de selección automática:
+      modelo_por_producto, criterio_seleccion, modelos_candidatos y razon_por_producto.
+
+    Si ambos existen, se combinan y el JSON tiene prioridad para mostrar la selección
+    real de modelos por producto.
+    """
+    config = CONFIG_DEFAULT.copy()
+
     if RUTA_CONFIG.exists():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return joblib.load(RUTA_CONFIG)
-    return CONFIG_DEFAULT.copy()
+            try:
+                config_pkl = joblib.load(RUTA_CONFIG)
+                if isinstance(config_pkl, dict):
+                    config.update(config_pkl)
+            except Exception as e:
+                st.warning(f"No se pudo leer config_entrenamiento.pkl: {e}")
+
+    if RUTA_CONFIG_JSON.exists():
+        try:
+            with open(RUTA_CONFIG_JSON, "r", encoding="utf-8") as f:
+                config_json = json.load(f)
+            if isinstance(config_json, dict):
+                config.update(config_json)
+        except Exception as e:
+            st.warning(f"No se pudo leer config_entrenamiento.json: {e}")
+
+    return config
 
 
 CONFIG = cargar_config()
@@ -199,6 +241,9 @@ PRODUCTOS = CONFIG.get("productos", CONFIG_DEFAULT["productos"])
 VARIABLES_CONFIG = CONFIG.get("variables_predictoras", CONFIG_DEFAULT["variables_predictoras"])
 RANGO_HISTORICO_MIN = pd.Timestamp(CONFIG.get("fecha_min_modelo", "2023-01-02"))
 RANGO_HISTORICO_MAX = pd.Timestamp(CONFIG.get("fecha_max_modelo", "2025-12-31"))
+BASE_CICLO_DIA_SEMANA = int(CONFIG.get("base_ciclo_dia_semana", CONFIG_DEFAULT.get("base_ciclo_dia_semana", 5)))
+MODELO_POR_PRODUCTO = CONFIG.get("modelo_por_producto", {}) or {}
+RAZON_POR_PRODUCTO = CONFIG.get("razon_por_producto", {}) or {}
 
 
 @st.cache_resource(show_spinner=False)
@@ -232,6 +277,34 @@ def obtener_variables_modelo(modelo):
     return list(VARIABLES_CONFIG)
 
 
+def obtener_modelo_config_producto(producto):
+    """
+    Devuelve el nombre del modelo seleccionado para el producto según config_entrenamiento.json.
+    Si no existe, intenta inferirlo desde la configuración general.
+    """
+    return MODELO_POR_PRODUCTO.get(producto, CONFIG.get("modelo", "No definido"))
+
+
+def obtener_estimador_final(modelo):
+    """
+    Si el modelo es un Pipeline de scikit-learn, devuelve el último estimador.
+    Si no, devuelve el objeto del modelo.
+    """
+    if hasattr(modelo, "steps") and getattr(modelo, "steps"):
+        return modelo.steps[-1][1]
+    return modelo
+
+
+def obtener_tipo_modelo_real(modelo):
+    """
+    Devuelve un nombre entendible del modelo realmente cargado.
+    Para Pipeline muestra: Pipeline → ElasticNet, por ejemplo.
+    """
+    if hasattr(modelo, "steps") and getattr(modelo, "steps"):
+        return "Pipeline → " + type(modelo.steps[-1][1]).__name__
+    return type(modelo).__name__
+
+
 def diagnostico_modelos():
     try:
         modelos = cargar_modelos()
@@ -241,14 +314,20 @@ def diagnostico_modelos():
     filas = []
     for producto, modelo in modelos.items():
         variables = obtener_variables_modelo(modelo)
+        estimador_final = obtener_estimador_final(modelo)
+        modelo_config = obtener_modelo_config_producto(producto)
+        modelo_real = obtener_tipo_modelo_real(modelo)
+
         filas.append({
             "Producto": nombre_producto(producto),
-            "Tipo de modelo": type(modelo).__name__,
+            "Modelo seleccionado en config": modelo_config,
+            "Tipo real cargado": modelo_real,
+            "Coincide config vs PKL": "Sí" if modelo_config in modelo_real or modelo_real in modelo_config else "Revisar",
             "Variables usadas por el PKL": len(variables),
             "Variables en config": len(VARIABLES_CONFIG),
-            "Árboles": getattr(modelo, "n_estimators", np.nan),
-            "Max depth": getattr(modelo, "max_depth", np.nan),
-            "Min samples leaf": getattr(modelo, "min_samples_leaf", np.nan),
+            "Árboles": getattr(estimador_final, "n_estimators", np.nan),
+            "Max depth": getattr(estimador_final, "max_depth", np.nan),
+            "Min samples leaf": getattr(estimador_final, "min_samples_leaf", np.nan),
         })
     return pd.DataFrame(filas)
 
@@ -567,8 +646,8 @@ def agregar_variables_predictoras(df_model):
 
     df_model["mes_sin"] = np.sin(2 * np.pi * df_model["mes"] / 12)
     df_model["mes_cos"] = np.cos(2 * np.pi * df_model["mes"] / 12)
-    df_model["dia_semana_sin"] = np.sin(2 * np.pi * df_model["dia_semana_num"] / 7)
-    df_model["dia_semana_cos"] = np.cos(2 * np.pi * df_model["dia_semana_num"] / 7)
+    df_model["dia_semana_sin"] = np.sin(2 * np.pi * df_model["dia_semana_num"] / BASE_CICLO_DIA_SEMANA)
+    df_model["dia_semana_cos"] = np.cos(2 * np.pi * df_model["dia_semana_num"] / BASE_CICLO_DIA_SEMANA)
 
     fecha_base = RANGO_HISTORICO_MIN
     df_model["tendencia"] = (df_model["fecha"] - fecha_base).dt.days
@@ -662,12 +741,24 @@ def generar_predicciones(df_preparado):
         X = df_preparado[variables_modelo].copy().fillna(0)
         pred = modelo.predict(X)
         pred = np.maximum(pred, 0)
+
+        # Reglas de negocio para productos estacionales.
+        # Aunque el modelo pueda estimar valores bajos fuera de temporada,
+        # la salida operativa se fuerza a 0 cuando la fecha no corresponde.
+        if producto == "fanesca" and "es_fanesca_temporada" in df_preparado.columns:
+            pred = np.where(df_preparado["es_fanesca_temporada"].to_numpy() == 1, pred, 0)
+        if producto == "colada_morada" and "es_colada_temporada" in df_preparado.columns:
+            pred = np.where(df_preparado["es_colada_temporada"].to_numpy() == 1, pred, 0)
+
         df_pred_wide[producto] = np.round(pred).astype(int)
 
         diagnosticos.append({
             "Producto": nombre_producto(producto),
+            "Modelo seleccionado": obtener_modelo_config_producto(producto),
+            "Tipo real cargado": obtener_tipo_modelo_real(modelo),
             "Variables usadas": len(variables_modelo),
-            "Variables": ", ".join(variables_modelo)
+            "Variables": ", ".join(variables_modelo),
+            "Explicación de selección": RAZON_POR_PRODUCTO.get(producto, "No disponible en la configuración.")
         })
 
     df_largo = df_pred_wide.melt(
@@ -1105,7 +1196,7 @@ st.markdown(
         <p>
             Carga un archivo Excel o CSV para evaluar datos históricos o genera una predicción futura.
             La app usa modelos PKL y el archivo config_entrenamiento.pkl para estimar demanda por producto,
-            revisar resultados por periodo y evaluar la calidad del modelo con MAE, RMSE y R².
+            revisar resultados por periodo y evaluar la calidad del modelo con MAE, RMSE y R². Cada producto puede usar un algoritmo distinto según la selección automática del entrenamiento.
         </p>
     </div>
     """,
@@ -1144,6 +1235,12 @@ with st.sidebar:
     st.caption(f"Versión config: {CONFIG.get('version', 'Sin config')}")
     st.caption(f"Modelo: {CONFIG.get('modelo', 'No definido')}")
     st.caption(f"Rango modelo: {RANGO_HISTORICO_MIN.date()} a {RANGO_HISTORICO_MAX.date()}")
+    st.caption(f"Base ciclo día semana: {BASE_CICLO_DIA_SEMANA}")
+
+    if MODELO_POR_PRODUCTO:
+        with st.expander("Modelos seleccionados por producto"):
+            for prod, modelo_sel in MODELO_POR_PRODUCTO.items():
+                st.write(f"**{nombre_producto(prod)}:** {modelo_sel}")
 
     uploaded_file = None
     ejecutar = False
@@ -1194,6 +1291,12 @@ if not diag_general.empty:
         st.warning(
             "La configuración tiene un número de variables diferente al que usan algunos modelos PKL. "
             "La app prioriza las variables guardadas dentro de cada modelo para evitar errores de predicción."
+        )
+
+    if "Coincide config vs PKL" in diag_general.columns and (diag_general["Coincide config vs PKL"] == "Revisar").any():
+        st.warning(
+            "Al menos un modelo cargado no parece coincidir con el nombre registrado en config_entrenamiento.json. "
+            "Esto puede ocurrir si se reemplazó el JSON pero no se copiaron los PKL nuevos a la carpeta modelos."
         )
 else:
     st.info("Aún no se pudo leer el diagnóstico de modelos. Verifica la carpeta modelos.")
