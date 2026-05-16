@@ -1,0 +1,84 @@
+{
+    "version": "Version_5_seleccion_automatica",
+    "modelo": "Seleccion_automatica_por_producto",
+    "enfoque": "un_modelo_por_producto_con_seleccion_automatica",
+    "productos": [
+        "almuerzo",
+        "sopa",
+        "fanesca",
+        "colada_morada"
+    ],
+    "variables_predictoras": [
+        "anio",
+        "mes",
+        "dia_mes",
+        "dia_semana_num",
+        "semana_anio",
+        "es_fanesca_temporada",
+        "es_colada_temporada",
+        "es_inicio_mes",
+        "es_quincena",
+        "es_fin_mes",
+        "es_lunes",
+        "es_martes",
+        "es_miercoles",
+        "es_jueves",
+        "es_viernes",
+        "mes_sin",
+        "mes_cos",
+        "dia_semana_sin",
+        "dia_semana_cos",
+        "tendencia",
+        "tendencia_log",
+        "crecimiento_anual",
+        "preciomenu",
+        "preciosopa",
+        "fanesca_precio",
+        "coladamorada_precio"
+    ],
+    "fecha_min_modelo": "2023-01-02",
+    "fecha_max_modelo": "2025-12-31",
+    "temporada_colada_morada": {
+        "inicio_mes": 10,
+        "inicio_dia": 1,
+        "fin_mes": 11,
+        "fin_dia": 4
+    },
+    "temporada_fanesca": {
+        "meses": [
+            2,
+            3
+        ]
+    },
+    "base_ciclo_dia_semana": 5,
+    "criterio_seleccion": {
+        "principal": "Menor RMSE en validación",
+        "secundarios": [
+            "Menor MAE",
+            "Mayor R2"
+        ],
+        "justificacion": "La selección se hace con validación cronológica para evitar fuga de información. RMSE se usa como criterio principal porque penaliza más los errores grandes, lo cual es relevante en demanda operativa. MAE ayuda a interpretar el error promedio en unidades y R2 muestra capacidad explicativa."
+    },
+    "modelos_candidatos": [
+        "Baseline_Promedio",
+        "Regresion_Lineal",
+        "Ridge",
+        "ElasticNet",
+        "RandomForest",
+        "ExtraTrees",
+        "GradientBoosting",
+        "HistGradientBoosting"
+    ],
+    "modelo_por_producto": {
+        "almuerzo": "HistGradientBoosting",
+        "sopa": "ElasticNet",
+        "fanesca": "HistGradientBoosting",
+        "colada_morada": "RandomForest"
+    },
+    "razon_por_producto": {
+        "almuerzo": "Para el producto almuerzo, el modelo seleccionado fue HistGradientBoosting. La selección se realizó usando validación cronológica y el criterio principal fue menor RMSE. Este criterio es adecuado porque el RMSE penaliza con mayor fuerza los errores grandes, lo cual es importante en predicción de demanda porque un pico mal estimado puede afectar planificación, compras e inventario. El modelo seleccionado obtuvo en validación: MAE=11.943, RMSE=14.892, R2=0.1637, WAPE=11.298% y MAPE=11.529%. MAE se incluye para interpretar el error promedio en unidades, RMSE para priorizar errores grandes y R2 para revisar capacidad explicativa del modelo.",
+        "sopa": "Para el producto sopa, el modelo seleccionado fue ElasticNet. La selección se realizó usando validación cronológica y el criterio principal fue menor RMSE. Este criterio es adecuado porque el RMSE penaliza con mayor fuerza los errores grandes, lo cual es importante en predicción de demanda porque un pico mal estimado puede afectar planificación, compras e inventario. El modelo seleccionado obtuvo en validación: MAE=16.307, RMSE=25.222, R2=0.0752, WAPE=25.495% y MAPE=17.295%. MAE se incluye para interpretar el error promedio en unidades, RMSE para priorizar errores grandes y R2 para revisar capacidad explicativa del modelo.",
+        "fanesca": "Para el producto fanesca, el modelo seleccionado fue HistGradientBoosting. La selección se realizó usando validación cronológica y el criterio principal fue menor RMSE. Este criterio es adecuado porque el RMSE penaliza con mayor fuerza los errores grandes, lo cual es importante en predicción de demanda porque un pico mal estimado puede afectar planificación, compras e inventario. El modelo seleccionado obtuvo en validación: MAE=0.85, RMSE=2.644, R2=0.7471, WAPE=51.819% y MAPE=19.978%. MAE se incluye para interpretar el error promedio en unidades, RMSE para priorizar errores grandes y R2 para revisar capacidad explicativa del modelo.",
+        "colada_morada": "Para el producto colada_morada, el modelo seleccionado fue RandomForest. La selección se realizó usando validación cronológica y el criterio principal fue menor RMSE. Este criterio es adecuado porque el RMSE penaliza con mayor fuerza los errores grandes, lo cual es importante en predicción de demanda porque un pico mal estimado puede afectar planificación, compras e inventario. El modelo seleccionado obtuvo en validación: MAE=0.0, RMSE=0.0, R2=1.0, WAPE=nan% y MAPE=nan%. MAE se incluye para interpretar el error promedio en unidades, RMSE para priorizar errores grandes y R2 para revisar capacidad explicativa del modelo."
+    }
+}
