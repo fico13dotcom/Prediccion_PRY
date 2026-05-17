@@ -1,11 +1,10 @@
 # ============================================================
 # APP DE PREDICCIÓN DE DEMANDA DE PLATOS
 # Streamlit + Plotly + modelos PKL + config_entrenamiento.pkl
-# Versión compatible con selección automática de modelos por producto
+# Versión actualizada para predicción histórica y futura 6 meses
 # ============================================================
 
 import io
-import json
 import re
 import warnings
 from pathlib import Path
@@ -31,34 +30,21 @@ st.set_page_config(
 APP_DIR = Path(__file__).parent
 RUTA_MODELOS = APP_DIR / "modelos"
 RUTA_CONFIG = RUTA_MODELOS / "config_entrenamiento.pkl"
-RUTA_CONFIG_JSON = RUTA_MODELOS / "config_entrenamiento.json"
 
 CONFIG_DEFAULT = {
     "version": "default",
-    "modelo": "Seleccion_automatica_por_producto",
-    "enfoque": "un_modelo_por_producto_con_seleccion_automatica",
+    "modelo": "RandomForestRegressor",
     "productos": ["almuerzo", "sopa", "fanesca", "colada_morada"],
     "variables_predictoras": [
         "anio", "mes", "dia_mes", "dia_semana_num", "semana_anio",
         "es_fanesca_temporada", "es_colada_temporada",
-        "es_inicio_mes", "es_quincena", "es_fin_mes",
-        "es_lunes", "es_martes", "es_miercoles", "es_jueves", "es_viernes",
-        "mes_sin", "mes_cos", "dia_semana_sin", "dia_semana_cos",
-        "tendencia", "tendencia_log", "crecimiento_anual",
+        "tendencia", "crecimiento_anual",
         "preciomenu", "preciosopa", "fanesca_precio", "coladamorada_precio"
     ],
     "fecha_min_modelo": "2023-01-02",
     "fecha_max_modelo": "2025-12-31",
     "temporada_colada_morada": {"inicio_mes": 10, "inicio_dia": 1, "fin_mes": 11, "fin_dia": 4},
-    "temporada_fanesca": {"meses": [2, 3]},
-    "base_ciclo_dia_semana": 5,
-    "modelo_por_producto": {},
-    "criterio_seleccion": {
-        "principal": "Menor RMSE en validación",
-        "secundarios": ["Menor MAE", "Mayor R²"]
-    },
-    "modelos_candidatos": [],
-    "razon_por_producto": {},
+    "temporada_fanesca": {"meses": [3, 4]},
     "parametros_modelo": {}
 }
 
@@ -78,121 +64,282 @@ MESES_ES = {
 # ESTILOS
 # ============================================================
 
+
 st.markdown(
     """
     <style>
-    .main {
-        background: linear-gradient(135deg, #F8FAFC 0%, #EEF2FF 45%, #FFF7ED 100%);
+    :root {
+        --nb-bg-0: #070B14;
+        --nb-bg-1: #0B1220;
+        --nb-bg-2: #111827;
+        --nb-bg-3: #172033;
+        --nb-card: #111827;
+        --nb-card-soft: #162238;
+        --nb-border: #334155;
+        --nb-border-soft: rgba(148, 163, 184, 0.26);
+        --nb-text: #F8FAFC;
+        --nb-text-soft: #CBD5E1;
+        --nb-text-muted: #94A3B8;
+        --nb-primary: #8B5CF6;
+        --nb-primary-2: #38BDF8;
+        --nb-accent: #F97316;
+        --nb-success: #22C55E;
+        --nb-warning-bg: #3B2A10;
+        --nb-warning-border: #F59E0B;
+        --nb-warning-text: #FDE68A;
+        --nb-shadow: rgba(0, 0, 0, 0.32);
     }
+
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(139, 92, 246, 0.16), transparent 32%),
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 34%),
+            linear-gradient(135deg, var(--nb-bg-0) 0%, var(--nb-bg-1) 48%, #111126 100%);
+        color: var(--nb-text);
+    }
+
+    .main {
+        background: transparent;
+    }
+
     .block-container {
         padding-top: 1.5rem;
         padding-bottom: 3rem;
     }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #111827 0%, #0B1220 100%);
+        border-right: 1px solid var(--nb-border-soft);
+    }
+
+    [data-testid="stSidebar"] * {
+        color: var(--nb-text-soft);
+    }
+
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] strong {
+        color: var(--nb-text) !important;
+    }
+
+    h1, h2, h3, h4, h5, h6,
+    p, li, label, span {
+        color: inherit;
+    }
+
     .hero {
-        padding: 28px 30px;
+        padding: 30px 32px;
         border-radius: 26px;
         background:
-            radial-gradient(circle at top left, rgba(249,115,22,0.22), transparent 28%),
-            radial-gradient(circle at top right, rgba(37,99,235,0.22), transparent 28%),
-            linear-gradient(135deg, #1E1B4B 0%, #312E81 45%, #6D28D9 100%);
-        color: white;
-        box-shadow: 0 20px 40px rgba(15,23,42,0.18);
+            radial-gradient(circle at top left, rgba(249,115,22,0.24), transparent 30%),
+            radial-gradient(circle at top right, rgba(56,189,248,0.24), transparent 32%),
+            linear-gradient(135deg, #312E81 0%, #4C1D95 48%, #6D28D9 100%);
+        color: #FFFFFF;
+        border: 1px solid rgba(196,181,253,0.28);
+        box-shadow: 0 22px 46px var(--nb-shadow);
         margin-bottom: 24px;
     }
+
     .hero h1 {
         font-size: 2.2rem;
-        font-weight: 800;
+        font-weight: 850;
         margin: 0;
         letter-spacing: -0.03em;
+        color: #FFFFFF !important;
     }
+
     .hero p {
-        color: rgba(255,255,255,0.86);
+        color: rgba(255,255,255,0.92) !important;
         font-size: 1.02rem;
-        margin-top: 8px;
+        margin-top: 10px;
         margin-bottom: 0;
-        max-width: 960px;
+        max-width: 980px;
+        line-height: 1.55;
     }
-    .kpi-card {
-        background: rgba(255,255,255,0.88);
-        border: 1px solid rgba(226,232,240,0.95);
+
+    .section-title {
+        color: var(--nb-text) !important;
+        font-size: 1.28rem;
+        font-weight: 850;
+        margin: 16px 0 8px 0;
+        letter-spacing: -0.01em;
+    }
+
+    .kpi-card,
+    div[data-testid="stMetric"] {
+        background: linear-gradient(180deg, rgba(17,24,39,0.96), rgba(15,23,42,0.94));
+        border: 1px solid var(--nb-border-soft);
         border-radius: 22px;
-        padding: 20px 20px 18px 20px;
-        box-shadow: 0 12px 30px rgba(15,23,42,0.08);
+        padding: 18px 20px;
+        box-shadow: 0 14px 32px var(--nb-shadow);
+        color: var(--nb-text);
+    }
+
+    .kpi-card {
         min-height: 120px;
     }
+
     .kpi-title {
-        color: #64748B;
-        font-size: 0.83rem;
-        font-weight: 700;
+        color: var(--nb-text-muted) !important;
+        font-size: 0.82rem;
+        font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         margin-bottom: 8px;
     }
+
     .kpi-value {
-        color: #0F172A;
+        color: var(--nb-text) !important;
         font-size: 1.8rem;
-        font-weight: 800;
+        font-weight: 850;
         line-height: 1.1;
     }
+
     .kpi-sub {
-        color: #64748B;
+        color: var(--nb-text-soft) !important;
         font-size: 0.9rem;
         margin-top: 8px;
     }
-    .section-title {
-        color: #0F172A;
-        font-size: 1.28rem;
-        font-weight: 800;
-        margin: 12px 0 6px 0;
+
+    div[data-testid="stMetric"] label,
+    div[data-testid="stMetric"] [data-testid="stMetricLabel"] {
+        color: var(--nb-text-muted) !important;
     }
+
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: var(--nb-text) !important;
+    }
+
+    .info-box,
+    .mode-box,
     .insight {
-        background: linear-gradient(135deg, rgba(91,33,182,0.10), rgba(249,115,22,0.10));
-        border-left: 5px solid #7C3AED;
+        background: linear-gradient(180deg, rgba(23,32,51,0.98), rgba(17,24,39,0.98));
+        border: 1px solid var(--nb-border-soft);
         border-radius: 18px;
-        padding: 14px 16px;
-        margin: 8px 0;
-        color: #1E1B4B;
-        font-weight: 600;
+        padding: 15px 17px;
+        margin: 10px 0 16px 0;
+        color: var(--nb-text-soft) !important;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+        line-height: 1.58;
     }
+
     .info-box {
-        background: rgba(255,255,255,0.78);
-        border: 1px solid rgba(226,232,240,0.95);
+        border-left: 5px solid var(--nb-primary-2);
+    }
+
+    .mode-box {
+        border-left: 5px solid var(--nb-primary);
+    }
+
+    .insight {
+        border-left: 5px solid var(--nb-accent);
+        font-weight: 650;
+    }
+
+    .info-box b,
+    .mode-box b,
+    .insight b,
+    .info-box strong,
+    .mode-box strong,
+    .insight strong {
+        color: #FFFFFF !important;
+    }
+
+    .soft-warning {
+        background: linear-gradient(180deg, rgba(59,42,16,0.98), rgba(48,32,8,0.98));
+        border: 1px solid rgba(245,158,11,0.55);
+        border-left: 5px solid var(--nb-warning-border);
         border-radius: 18px;
         padding: 14px 16px;
         margin: 10px 0 16px 0;
-        color: #334155;
-        box-shadow: 0 8px 20px rgba(15,23,42,0.05);
-        line-height: 1.55;
+        color: var(--nb-warning-text) !important;
+        line-height: 1.58;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
     }
-    div[data-testid="stMetric"] {
-        background: rgba(255,255,255,0.84);
-        border: 1px solid rgba(226,232,240,0.92);
-        border-radius: 18px;
-        padding: 14px;
-        box-shadow: 0 10px 26px rgba(15,23,42,0.06);
+
+    .soft-warning b,
+    .soft-warning strong {
+        color: #FFF7ED !important;
     }
+
     .stButton > button {
-        background: linear-gradient(135deg, #5B21B6 0%, #2563EB 100%);
-        color: white;
-        border: none;
+        background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%);
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.14);
         border-radius: 16px;
         padding: 0.75rem 1.15rem;
-        font-weight: 800;
-        box-shadow: 0 12px 26px rgba(37,99,235,0.22);
+        font-weight: 850;
+        box-shadow: 0 14px 28px rgba(37,99,235,0.28);
     }
+
     .stButton > button:hover {
-        border: none;
-        filter: brightness(1.06);
-        color: white;
+        border: 1px solid rgba(255,255,255,0.28);
+        filter: brightness(1.08);
+        color: white !important;
     }
+
     .stDownloadButton > button {
         border-radius: 16px;
-        font-weight: 700;
+        font-weight: 800;
+        background: linear-gradient(135deg, #0EA5E9 0%, #7C3AED 100%);
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"] {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--nb-border-soft);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+    }
+
+    /* Widgets */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div {
+        background-color: #111827 !important;
+        border-color: var(--nb-border) !important;
+        color: var(--nb-text) !important;
+    }
+
+    div[data-baseweb="radio"] label,
+    div[data-testid="stRadio"] label,
+    div[data-testid="stDateInput"] label,
+    div[data-testid="stNumberInput"] label,
+    div[data-testid="stSlider"] label,
+    div[data-testid="stFileUploader"] label {
+        color: var(--nb-text-soft) !important;
+    }
+
+    /* Expander */
+    details {
+        background: rgba(17,24,39,0.72);
+        border: 1px solid var(--nb-border-soft);
+        border-radius: 14px;
+        padding: 2px 6px;
+    }
+
+    summary {
+        color: var(--nb-text) !important;
+        font-weight: 750;
+    }
+
+    /* Alerts nativos de Streamlit: mejora contraste en modo oscuro */
+    div[data-testid="stAlert"] {
+        border-radius: 16px;
+        border: 1px solid var(--nb-border-soft);
+    }
+
+    hr {
+        border-color: var(--nb-border-soft);
     }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 
 
 # ============================================================
@@ -201,39 +348,11 @@ st.markdown(
 
 @st.cache_resource(show_spinner=False)
 def cargar_config():
-    """
-    Carga la configuración del entrenamiento.
-
-    Compatibilidad V5:
-    - config_entrenamiento.pkl puede contener la configuración base.
-    - config_entrenamiento.json puede contener metadatos adicionales de selección automática:
-      modelo_por_producto, criterio_seleccion, modelos_candidatos y razon_por_producto.
-
-    Si ambos existen, se combinan y el JSON tiene prioridad para mostrar la selección
-    real de modelos por producto.
-    """
-    config = CONFIG_DEFAULT.copy()
-
     if RUTA_CONFIG.exists():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            try:
-                config_pkl = joblib.load(RUTA_CONFIG)
-                if isinstance(config_pkl, dict):
-                    config.update(config_pkl)
-            except Exception as e:
-                st.warning(f"No se pudo leer config_entrenamiento.pkl: {e}")
-
-    if RUTA_CONFIG_JSON.exists():
-        try:
-            with open(RUTA_CONFIG_JSON, "r", encoding="utf-8") as f:
-                config_json = json.load(f)
-            if isinstance(config_json, dict):
-                config.update(config_json)
-        except Exception as e:
-            st.warning(f"No se pudo leer config_entrenamiento.json: {e}")
-
-    return config
+            return joblib.load(RUTA_CONFIG)
+    return CONFIG_DEFAULT.copy()
 
 
 CONFIG = cargar_config()
@@ -241,9 +360,6 @@ PRODUCTOS = CONFIG.get("productos", CONFIG_DEFAULT["productos"])
 VARIABLES_CONFIG = CONFIG.get("variables_predictoras", CONFIG_DEFAULT["variables_predictoras"])
 RANGO_HISTORICO_MIN = pd.Timestamp(CONFIG.get("fecha_min_modelo", "2023-01-02"))
 RANGO_HISTORICO_MAX = pd.Timestamp(CONFIG.get("fecha_max_modelo", "2025-12-31"))
-BASE_CICLO_DIA_SEMANA = int(CONFIG.get("base_ciclo_dia_semana", CONFIG_DEFAULT.get("base_ciclo_dia_semana", 5)))
-MODELO_POR_PRODUCTO = CONFIG.get("modelo_por_producto", {}) or {}
-RAZON_POR_PRODUCTO = CONFIG.get("razon_por_producto", {}) or {}
 
 
 @st.cache_resource(show_spinner=False)
@@ -277,34 +393,6 @@ def obtener_variables_modelo(modelo):
     return list(VARIABLES_CONFIG)
 
 
-def obtener_modelo_config_producto(producto):
-    """
-    Devuelve el nombre del modelo seleccionado para el producto según config_entrenamiento.json.
-    Si no existe, intenta inferirlo desde la configuración general.
-    """
-    return MODELO_POR_PRODUCTO.get(producto, CONFIG.get("modelo", "No definido"))
-
-
-def obtener_estimador_final(modelo):
-    """
-    Si el modelo es un Pipeline de scikit-learn, devuelve el último estimador.
-    Si no, devuelve el objeto del modelo.
-    """
-    if hasattr(modelo, "steps") and getattr(modelo, "steps"):
-        return modelo.steps[-1][1]
-    return modelo
-
-
-def obtener_tipo_modelo_real(modelo):
-    """
-    Devuelve un nombre entendible del modelo realmente cargado.
-    Para Pipeline muestra: Pipeline → ElasticNet, por ejemplo.
-    """
-    if hasattr(modelo, "steps") and getattr(modelo, "steps"):
-        return "Pipeline → " + type(modelo.steps[-1][1]).__name__
-    return type(modelo).__name__
-
-
 def diagnostico_modelos():
     try:
         modelos = cargar_modelos()
@@ -314,20 +402,14 @@ def diagnostico_modelos():
     filas = []
     for producto, modelo in modelos.items():
         variables = obtener_variables_modelo(modelo)
-        estimador_final = obtener_estimador_final(modelo)
-        modelo_config = obtener_modelo_config_producto(producto)
-        modelo_real = obtener_tipo_modelo_real(modelo)
-
         filas.append({
             "Producto": nombre_producto(producto),
-            "Modelo seleccionado en config": modelo_config,
-            "Tipo real cargado": modelo_real,
-            "Coincide config vs PKL": "Sí" if modelo_config in modelo_real or modelo_real in modelo_config else "Revisar",
+            "Tipo de modelo": type(modelo).__name__,
             "Variables usadas por el PKL": len(variables),
             "Variables en config": len(VARIABLES_CONFIG),
-            "Árboles": getattr(estimador_final, "n_estimators", np.nan),
-            "Max depth": getattr(estimador_final, "max_depth", np.nan),
-            "Min samples leaf": getattr(estimador_final, "min_samples_leaf", np.nan),
+            "Árboles": getattr(modelo, "n_estimators", np.nan),
+            "Max depth": getattr(modelo, "max_depth", np.nan),
+            "Min samples leaf": getattr(modelo, "min_samples_leaf", np.nan),
         })
     return pd.DataFrame(filas)
 
@@ -523,14 +605,51 @@ def validar_estructura(df):
 
 def leer_archivo(uploaded_file):
     nombre = uploaded_file.name.lower()
-    if nombre.endswith(".csv"):
-        try:
-            return pd.read_csv(uploaded_file)
-        except UnicodeDecodeError:
-            uploaded_file.seek(0)
-            return pd.read_csv(uploaded_file, encoding="latin-1")
+
     if nombre.endswith(".xlsx"):
         return pd.read_excel(uploaded_file)
+
+    if nombre.endswith(".csv"):
+        # Lectura robusta: algunos CSV vienen separados por coma y otros por punto y coma.
+        # También se prueban codificaciones comunes para evitar errores al cargar archivos exportados desde Excel.
+        intentos = [
+            {"sep": ";", "encoding": "utf-8-sig"},
+            {"sep": ",", "encoding": "utf-8-sig"},
+            {"sep": ";", "encoding": "latin-1"},
+            {"sep": ",", "encoding": "latin-1"},
+            {"sep": None, "encoding": "utf-8-sig"},
+            {"sep": None, "encoding": "latin-1"},
+        ]
+
+        ultimo_error = None
+        for intento in intentos:
+            try:
+                uploaded_file.seek(0)
+                if intento["sep"] is None:
+                    df_temp = pd.read_csv(
+                        uploaded_file,
+                        sep=None,
+                        engine="python",
+                        encoding=intento["encoding"]
+                    )
+                else:
+                    df_temp = pd.read_csv(
+                        uploaded_file,
+                        sep=intento["sep"],
+                        engine="python",
+                        encoding=intento["encoding"]
+                    )
+
+                if df_temp.shape[1] > 1:
+                    return df_temp
+            except Exception as e:
+                ultimo_error = e
+
+        raise ValueError(
+            "No se pudo leer el CSV correctamente. Revisa si el archivo está separado por coma o punto y coma. "
+            f"Último error: {ultimo_error}"
+        )
+
     raise ValueError("Formato no permitido. Sube un archivo .csv o .xlsx.")
 
 
@@ -646,8 +765,8 @@ def agregar_variables_predictoras(df_model):
 
     df_model["mes_sin"] = np.sin(2 * np.pi * df_model["mes"] / 12)
     df_model["mes_cos"] = np.cos(2 * np.pi * df_model["mes"] / 12)
-    df_model["dia_semana_sin"] = np.sin(2 * np.pi * df_model["dia_semana_num"] / BASE_CICLO_DIA_SEMANA)
-    df_model["dia_semana_cos"] = np.cos(2 * np.pi * df_model["dia_semana_num"] / BASE_CICLO_DIA_SEMANA)
+    df_model["dia_semana_sin"] = np.sin(2 * np.pi * df_model["dia_semana_num"] / 7)
+    df_model["dia_semana_cos"] = np.cos(2 * np.pi * df_model["dia_semana_num"] / 7)
 
     fecha_base = RANGO_HISTORICO_MIN
     df_model["tendencia"] = (df_model["fecha"] - fecha_base).dt.days
@@ -741,24 +860,12 @@ def generar_predicciones(df_preparado):
         X = df_preparado[variables_modelo].copy().fillna(0)
         pred = modelo.predict(X)
         pred = np.maximum(pred, 0)
-
-        # Reglas de negocio para productos estacionales.
-        # Aunque el modelo pueda estimar valores bajos fuera de temporada,
-        # la salida operativa se fuerza a 0 cuando la fecha no corresponde.
-        if producto == "fanesca" and "es_fanesca_temporada" in df_preparado.columns:
-            pred = np.where(df_preparado["es_fanesca_temporada"].to_numpy() == 1, pred, 0)
-        if producto == "colada_morada" and "es_colada_temporada" in df_preparado.columns:
-            pred = np.where(df_preparado["es_colada_temporada"].to_numpy() == 1, pred, 0)
-
         df_pred_wide[producto] = np.round(pred).astype(int)
 
         diagnosticos.append({
             "Producto": nombre_producto(producto),
-            "Modelo seleccionado": obtener_modelo_config_producto(producto),
-            "Tipo real cargado": obtener_tipo_modelo_real(modelo),
             "Variables usadas": len(variables_modelo),
-            "Variables": ", ".join(variables_modelo),
-            "Explicación de selección": RAZON_POR_PRODUCTO.get(producto, "No disponible en la configuración.")
+            "Variables": ", ".join(variables_modelo)
         })
 
     df_largo = df_pred_wide.melt(
@@ -830,13 +937,55 @@ def aplicar_estilo_barras(fig, texttemplate="%{text}"):
         texttemplate=texttemplate,
         textposition="inside",
         insidetextanchor="middle",
-        textfont=dict(size=12, color="white"),
+        textfont=dict(size=12, color="#FFFFFF"),
         cliponaxis=False
     )
     fig.update_layout(
         uniformtext_minsize=10,
         uniformtext_mode="show"
     )
+    return fig
+
+
+
+def aplicar_tema_plotly(fig):
+    """
+    Aplica una paleta oscura y consistente a cualquier gráfico Plotly.
+    Esto evita textos invisibles cuando Streamlit está en modo oscuro.
+    """
+    colorway = ["#38BDF8", "#8B5CF6", "#F97316", "#22C55E", "#E879F9", "#FACC15"]
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(17, 24, 39, 0.98)",
+        plot_bgcolor="rgba(11, 18, 32, 0.98)",
+        font=dict(color="#E5E7EB"),
+        title_font=dict(color="#F8FAFC", size=20),
+        legend=dict(
+            bgcolor="rgba(17, 24, 39, 0.55)",
+            bordercolor="rgba(148, 163, 184, 0.25)",
+            borderwidth=1,
+            font=dict(color="#E5E7EB")
+        ),
+        colorway=colorway
+    )
+
+    fig.update_xaxes(
+        title_font=dict(color="#CBD5E1"),
+        tickfont=dict(color="#CBD5E1"),
+        gridcolor="rgba(148, 163, 184, 0.18)",
+        zerolinecolor="rgba(148, 163, 184, 0.24)",
+        linecolor="rgba(148, 163, 184, 0.28)"
+    )
+
+    fig.update_yaxes(
+        title_font=dict(color="#CBD5E1"),
+        tickfont=dict(color="#CBD5E1"),
+        gridcolor="rgba(148, 163, 184, 0.18)",
+        zerolinecolor="rgba(148, 163, 184, 0.24)",
+        linecolor="rgba(148, 163, 184, 0.28)"
+    )
+
     return fig
 
 
@@ -1185,6 +1334,96 @@ def mostrar_info(texto):
     st.markdown(f'<div class="info-box">{texto}</div>', unsafe_allow_html=True)
 
 
+def mostrar_modo(texto):
+    st.markdown(f'<div class="mode-box">{texto}</div>', unsafe_allow_html=True)
+
+
+def mostrar_advertencia_suave(texto):
+    st.markdown(f'<div class="soft-warning">{texto}</div>', unsafe_allow_html=True)
+
+
+def fecha_siguiente_habil(fecha):
+    fecha = pd.Timestamp(fecha).normalize()
+    while fecha.weekday() > 4:
+        fecha = fecha + pd.Timedelta(days=1)
+    return fecha.date()
+
+
+def fecha_inicio_futura_default():
+    """
+    Fecha inicial sugerida para predicción futura.
+
+    Usa la mayor entre:
+    - la fecha siguiente al último día del rango de entrenamiento;
+    - la fecha actual del sistema.
+
+    Así, si la app se ejecuta después del entrenamiento, por defecto proyecta desde una fecha realmente futura.
+    """
+    hoy = pd.Timestamp.today().normalize()
+    despues_entrenamiento = RANGO_HISTORICO_MAX + pd.Timedelta(days=1)
+    return fecha_siguiente_habil(max(hoy, despues_entrenamiento))
+
+
+def safe_plotly_chart(fig, key, use_container_width=True):
+    """
+    Renderiza gráficos Plotly con key única y tema visual consistente.
+
+    Esto reduce errores de interfaz como removeChild cuando Streamlit re-renderiza muchos componentes dinámicos.
+    Si el navegador falla por un problema visual, la app muestra una advertencia en lugar de detener todo el flujo.
+    """
+    try:
+        fig = aplicar_tema_plotly(fig)
+    except Exception:
+        pass
+
+    try:
+        st.plotly_chart(
+            fig,
+            use_container_width=use_container_width,
+            key=key,
+            config={"responsive": True, "displaylogo": False}
+        )
+    except TypeError:
+        # Compatibilidad con versiones antiguas de Streamlit que no soporten key/config en plotly_chart.
+        st.plotly_chart(fig, use_container_width=use_container_width)
+    except Exception as e:
+        st.warning(
+            "No se pudo renderizar este gráfico. Es un problema visual del navegador/Streamlit, "
+            "no necesariamente de los modelos. Prueba recargar la página con Ctrl+Shift+R o abrir en incógnito."
+        )
+        with st.expander("Detalle técnico del error visual"):
+            st.write(str(e))
+
+
+def safe_dataframe(df, key=None, use_container_width=True, hide_index=True):
+    """
+    Muestra tablas con manejo básico de compatibilidad entre versiones de Streamlit.
+    """
+    try:
+        st.dataframe(df, use_container_width=use_container_width, hide_index=hide_index, key=key)
+    except TypeError:
+        try:
+            st.dataframe(df, use_container_width=use_container_width, hide_index=hide_index)
+        except TypeError:
+            st.dataframe(df, use_container_width=use_container_width)
+    except Exception as e:
+        st.warning("No se pudo renderizar la tabla en pantalla, pero el procesamiento continúa.")
+        with st.expander("Detalle técnico del error de tabla"):
+            st.write(str(e))
+
+
+def explicar_funcionamiento_modos():
+    mostrar_modo(
+        "<b>Archivo cargado</b>: la app toma las fechas que vienen en tu Excel/CSV y calcula la predicción para esas mismas fechas. "
+        "Si el archivo corresponde al mes pasado, el resultado será una estimación/backtesting de ese mes pasado y, si hay columna Clientes, se calculan métricas contra los valores reales. "
+        "Este modo no extiende automáticamente 6 meses hacia adelante."
+    )
+    mostrar_modo(
+        "<b>Predicción futura</b>: la app no depende de un archivo cargado. Crea un calendario futuro de lunes a viernes desde la fecha inicial seleccionada, "
+        "genera las variables necesarias y estima la demanda para los próximos meses. Como no existen valores reales futuros, aquí no se calculan MAE, RMSE ni R²."
+    )
+
+
 # ============================================================
 # INTERFAZ
 # ============================================================
@@ -1196,12 +1435,19 @@ st.markdown(
         <p>
             Carga un archivo Excel o CSV para evaluar datos históricos o genera una predicción futura.
             La app usa modelos PKL y el archivo config_entrenamiento.pkl para estimar demanda por producto,
-            revisar resultados por periodo y evaluar la calidad del modelo con MAE, RMSE y R². Cada producto puede usar un algoritmo distinto según la selección automática del entrenamiento.
+            revisar resultados por periodo y evaluar la calidad del modelo con MAE, RMSE y R².
         </p>
     </div>
     """,
     unsafe_allow_html=True
 )
+
+with st.expander("Cómo funciona la predicción y cuándo usar cada modo", expanded=True):
+    explicar_funcionamiento_modos()
+    mostrar_advertencia_suave(
+        "Ejemplo: si cargas un Excel del mes pasado en <b>Archivo cargado</b>, la app calcula la predicción para los días del mes pasado y la compara contra Clientes si esa columna existe. "
+        "Para proyectar los próximos 6 meses debes cambiar a <b>Predicción futura</b> y elegir la fecha inicial."
+    )
 
 with st.sidebar:
     st.markdown("### Panel de control")
@@ -1214,20 +1460,21 @@ with st.sidebar:
         "Modo de ejecución",
         ["Archivo cargado", "Predicción futura 6 meses"],
         help=(
-            "Archivo cargado: procesa un Excel/CSV histórico y permite calcular métricas si existen valores reales. "
-            "Predicción futura: genera fechas futuras y estima demanda sin comparar contra valores reales."
-        )
+            "Archivo cargado: predice exactamente las fechas incluidas en el archivo y permite comparar contra valores reales. "
+            "Predicción futura: crea fechas futuras y estima demanda sin comparar contra valores reales."
+        ),
+        key="modo_ejecucion"
     )
 
     if modo == "Archivo cargado":
         st.info(
-            "Este modo lee el archivo cargado, valida columnas, limpia datos, genera variables predictoras, "
-            "aplica los modelos y calcula MAE, RMSE y R² cuando hay valores reales."
+            "Este modo lee el archivo cargado y predice las mismas fechas que vienen en el archivo. "
+            "Si cargas datos del mes pasado, funciona como una evaluación histórica: predice ese mes y compara contra Clientes para calcular MAE, RMSE y R²."
         )
     else:
         st.info(
-            "Este modo crea un calendario futuro de lunes a viernes, usa los precios configurados y genera "
-            "una estimación de demanda. No calcula métricas porque no existen valores reales futuros."
+            "Este modo crea un calendario futuro de lunes a viernes desde la fecha inicial seleccionada. "
+            "Usa los precios configurados y genera una estimación de demanda. No calcula métricas porque no existen valores reales futuros."
         )
 
     st.markdown("### Configuración detectada")
@@ -1235,12 +1482,6 @@ with st.sidebar:
     st.caption(f"Versión config: {CONFIG.get('version', 'Sin config')}")
     st.caption(f"Modelo: {CONFIG.get('modelo', 'No definido')}")
     st.caption(f"Rango modelo: {RANGO_HISTORICO_MIN.date()} a {RANGO_HISTORICO_MAX.date()}")
-    st.caption(f"Base ciclo día semana: {BASE_CICLO_DIA_SEMANA}")
-
-    if MODELO_POR_PRODUCTO:
-        with st.expander("Modelos seleccionados por producto"):
-            for prod, modelo_sel in MODELO_POR_PRODUCTO.items():
-                st.write(f"**{nombre_producto(prod)}:** {modelo_sel}")
 
     uploaded_file = None
     ejecutar = False
@@ -1249,7 +1490,8 @@ with st.sidebar:
         uploaded_file = st.file_uploader(
             "Sube tu archivo CSV o Excel",
             type=["csv", "xlsx"],
-            help="El archivo debe incluir como mínimo Fecha, Tipo_plato y Clientes."
+            help="El archivo debe incluir como mínimo Fecha, Tipo_plato y Clientes.",
+            key="upload_archivo_historico"
         )
 
         st.markdown("### Estructura mínima")
@@ -1258,23 +1500,28 @@ with st.sidebar:
         st.caption("Recomendadas:")
         st.markdown("- Facturación\n- Precio menú / sopa / fanesca / colada")
 
-        ejecutar = st.button("Generar predicción", use_container_width=True)
+        ejecutar = st.button("Generar predicción", use_container_width=True, key="btn_generar_archivo")
 
     else:
         fecha_inicio_futuro = st.date_input(
             "Fecha inicial futura",
-            value=(RANGO_HISTORICO_MAX + pd.Timedelta(days=1)).date()
+            value=fecha_inicio_futura_default(),
+            help=(
+                "Desde esta fecha se genera el calendario futuro. "
+                "La app usa días hábiles de lunes a viernes."
+            ),
+            key="fecha_inicio_futuro"
         )
 
-        meses_futuro = st.slider("Meses a predecir", min_value=1, max_value=12, value=6)
+        meses_futuro = st.slider("Meses a predecir", min_value=1, max_value=12, value=6, key="meses_futuro")
 
         st.markdown("### Precios futuros")
-        precio_menu_futuro = st.number_input("Precio menú / almuerzo", min_value=0.0, value=float(get_precio_menu(pd.Timestamp(fecha_inicio_futuro))), step=0.1)
-        precio_sopa_futuro = st.number_input("Precio sopa", min_value=0.0, value=float(get_precio_sopa(pd.Timestamp(fecha_inicio_futuro))), step=0.1)
-        precio_fanesca_futuro = st.number_input("Precio fanesca", min_value=0.0, value=float(get_precio_fanesca(pd.Timestamp(fecha_inicio_futuro))), step=0.1)
-        precio_colada_futuro = st.number_input("Precio colada morada", min_value=0.0, value=float(get_precio_colada(pd.Timestamp(fecha_inicio_futuro))), step=0.1)
+        precio_menu_futuro = st.number_input("Precio menú / almuerzo", min_value=0.0, value=float(get_precio_menu(pd.Timestamp(fecha_inicio_futuro))), step=0.1, key="precio_menu_futuro")
+        precio_sopa_futuro = st.number_input("Precio sopa", min_value=0.0, value=float(get_precio_sopa(pd.Timestamp(fecha_inicio_futuro))), step=0.1, key="precio_sopa_futuro")
+        precio_fanesca_futuro = st.number_input("Precio fanesca", min_value=0.0, value=float(get_precio_fanesca(pd.Timestamp(fecha_inicio_futuro))), step=0.1, key="precio_fanesca_futuro")
+        precio_colada_futuro = st.number_input("Precio colada morada", min_value=0.0, value=float(get_precio_colada(pd.Timestamp(fecha_inicio_futuro))), step=0.1, key="precio_colada_futuro")
 
-        ejecutar = st.button("Generar predicción futura", use_container_width=True)
+        ejecutar = st.button("Generar predicción futura", use_container_width=True, key="btn_generar_futuro")
 
 
 st.markdown('<div class="section-title">Diagnóstico de modelos cargados</div>', unsafe_allow_html=True)
@@ -1285,18 +1532,12 @@ mostrar_info(
 )
 diag_general = diagnostico_modelos()
 if not diag_general.empty:
-    st.dataframe(diag_general, use_container_width=True, hide_index=True)
+    safe_dataframe(diag_general, use_container_width=True, hide_index=True, key="df_diag_general")
 
     if (diag_general["Variables usadas por el PKL"] != diag_general["Variables en config"]).any():
         st.warning(
             "La configuración tiene un número de variables diferente al que usan algunos modelos PKL. "
             "La app prioriza las variables guardadas dentro de cada modelo para evitar errores de predicción."
-        )
-
-    if "Coincide config vs PKL" in diag_general.columns and (diag_general["Coincide config vs PKL"] == "Revisar").any():
-        st.warning(
-            "Al menos un modelo cargado no parece coincidir con el nombre registrado en config_entrenamiento.json. "
-            "Esto puede ocurrir si se reemplazó el JSON pero no se copiaron los PKL nuevos a la carpeta modelos."
         )
 else:
     st.info("Aún no se pudo leer el diagnóstico de modelos. Verifica la carpeta modelos.")
@@ -1335,7 +1576,7 @@ if modo == "Archivo cargado":
         "La vista previa permite verificar que el archivo fue leído correctamente. "
         "En este punto todavía no se ejecutan los modelos; primero se revisa estructura, fechas, productos y columnas mínimas."
     )
-    st.dataframe(df_original.head(20), use_container_width=True)
+    safe_dataframe(df_original.head(20), use_container_width=True, hide_index=False, key="df_preview_archivo")
 
     if errores:
         for error in errores:
@@ -1344,6 +1585,24 @@ if modo == "Archivo cargado":
 
     for advertencia in advertencias:
         st.warning(advertencia)
+
+    # Explicación del alcance del archivo cargado.
+    try:
+        df_tmp_fechas = df_original.copy()
+        df_tmp_fechas.columns = [normalize_col(c) for c in df_tmp_fechas.columns]
+        resolved_tmp = resolver_aliases(df_tmp_fechas)
+        if "fecha" in resolved_tmp:
+            fechas_archivo = pd.to_datetime(df_tmp_fechas[resolved_tmp["fecha"]], errors="coerce").dropna()
+            if not fechas_archivo.empty:
+                fecha_archivo_min = fechas_archivo.min().date()
+                fecha_archivo_max = fechas_archivo.max().date()
+                mostrar_advertencia_suave(
+                    f"Este archivo cubre aproximadamente del <b>{fecha_archivo_min}</b> al <b>{fecha_archivo_max}</b>. "
+                    "Al presionar <b>Generar predicción</b>, la app calculará predicciones para esas mismas fechas. "
+                    "Si quieres proyectar después de ese periodo, cambia al modo <b>Predicción futura 6 meses</b>."
+                )
+    except Exception:
+        pass
 
     archivo_id = f"{uploaded_file.name}-{getattr(uploaded_file, 'size', 0)}-{modo}"
 
@@ -1438,6 +1697,17 @@ if resultados.get("advertencia_rango"):
 
 st.success("Predicción generada correctamente.")
 
+if resultados.get("tipo_resultado") == "histórico":
+    mostrar_info(
+        "Resultado histórico: las predicciones corresponden a las fechas del archivo cargado. "
+        "Si el archivo era del mes pasado, estás viendo la predicción de ese mes pasado y, cuando existe Clientes, la comparación con lo real."
+    )
+else:
+    mostrar_info(
+        "Resultado futuro: las predicciones fueron generadas sobre un calendario nuevo de lunes a viernes. "
+        "No hay métricas de error porque todavía no existen valores reales para comparar."
+    )
+
 # KPIs globales
 k1, k2, k3, k4 = st.columns(4)
 with k1:
@@ -1459,7 +1729,7 @@ with c2:
     mostrar_insight(f"Total estimado: {formato_entero(insights_globales['total'])} platos.")
 
 with st.expander("Ver variables usadas en la predicción"):
-    st.dataframe(diagnostico_pred, use_container_width=True, hide_index=True)
+    safe_dataframe(diagnostico_pred, use_container_width=True, hide_index=True, key="df_diagnostico_pred")
 
 
 # Evaluación solo con datos reales
@@ -1502,7 +1772,7 @@ if metricas_modelos is not None and not metricas_modelos.empty:
     )
 
     with st.expander("Ver ranking y explicación de métricas", expanded=True):
-        st.dataframe(formatear_metricas(metricas_modelos), use_container_width=True, hide_index=True)
+        safe_dataframe(formatear_metricas(metricas_modelos), use_container_width=True, hide_index=True, key="df_metricas_modelos")
         st.markdown(
             """
             **Cómo leer esta sección:**  
@@ -1526,11 +1796,11 @@ if metricas_modelos is not None and not metricas_modelos.empty:
 
     g1, g2 = st.columns(2)
     with g1:
-        st.plotly_chart(grafico_mae_rmse_por_producto(metricas_modelos), use_container_width=True)
+        safe_plotly_chart(grafico_mae_rmse_por_producto(metricas_modelos), key="chart_metricas_mae_rmse")
     with g2:
-        st.plotly_chart(grafico_r2_por_producto(metricas_modelos), use_container_width=True)
+        safe_plotly_chart(grafico_r2_por_producto(metricas_modelos), key="chart_metricas_r2")
 
-    st.plotly_chart(grafico_totales_real_predicho(metricas_modelos), use_container_width=True)
+    safe_plotly_chart(grafico_totales_real_predicho(metricas_modelos), key="chart_totales_real_predicho")
 
 elif resultados.get("tipo_resultado") == "futuro":
     st.info(
@@ -1554,7 +1824,8 @@ nivel = st.radio(
     help=(
         "Día muestra una fecha puntual. Semana acumula todos los días de la semana seleccionada. "
         "Mes agrupa todas las predicciones del mes elegido."
-    )
+    ),
+    key="nivel_consulta_periodo"
 )
 
 fecha_min_date = pred_diaria["fecha"].min().date()
@@ -1564,13 +1835,13 @@ df_filtrado = pred_diaria.copy()
 titulo_periodo = "Periodo completo"
 
 if nivel == "Día":
-    fecha_sel = st.date_input("Selecciona una fecha", value=fecha_min_date, min_value=fecha_min_date, max_value=fecha_max_date)
+    fecha_sel = st.date_input("Selecciona una fecha", value=fecha_min_date, min_value=fecha_min_date, max_value=fecha_max_date, key="fecha_consulta_dia")
     fecha_sel = pd.to_datetime(fecha_sel)
     df_filtrado = pred_diaria[pred_diaria["fecha"] == fecha_sel].copy()
     titulo_periodo = f"Día seleccionado: {fecha_sel.date()}"
 
 elif nivel == "Semana":
-    fecha_ref = st.date_input("Selecciona una fecha dentro de la semana", value=fecha_min_date, min_value=fecha_min_date, max_value=fecha_max_date)
+    fecha_ref = st.date_input("Selecciona una fecha dentro de la semana", value=fecha_min_date, min_value=fecha_min_date, max_value=fecha_max_date, key="fecha_consulta_semana")
     fecha_ref = pd.to_datetime(fecha_ref)
     anio_sel = int(fecha_ref.isocalendar().year)
     semana_sel = int(fecha_ref.isocalendar().week)
@@ -1584,7 +1855,7 @@ elif nivel == "Semana":
 else:
     meses_disponibles = pred_diaria[["anio", "mes", "mes_nombre"]].drop_duplicates().sort_values(["anio", "mes"])
     opciones_mes = [f"{int(row.anio)}-{int(row.mes):02d} | {row.mes_nombre}" for _, row in meses_disponibles.iterrows()]
-    opcion = st.selectbox("Selecciona un mes", opciones_mes)
+    opcion = st.selectbox("Selecciona un mes", opciones_mes, key="selectbox_mes_consulta")
     anio_sel = int(opcion.split("-")[0])
     mes_sel = int(opcion.split("-")[1].split(" ")[0])
     df_filtrado = pred_diaria[(pred_diaria["anio"] == anio_sel) & (pred_diaria["mes"] == mes_sel)].copy()
@@ -1614,7 +1885,7 @@ else:
     tabla_periodo["Producto"] = tabla_periodo["tipo_plato"].map(nombre_producto)
     tabla_periodo = tabla_periodo[["Producto", "cantidad_predicha"]].rename(columns={"cantidad_predicha": "Cantidad predicha"})
 
-st.dataframe(tabla_periodo, use_container_width=True, hide_index=True)
+safe_dataframe(tabla_periodo, use_container_width=True, hide_index=True, key="df_tabla_periodo")
 
 st.markdown("### Gráficos dinámicos")
 
@@ -1634,25 +1905,25 @@ if nivel == "Día":
     )
     fig_periodo.update_layout(height=420, title_font_size=20)
     aplicar_estilo_barras(fig_periodo)
-    st.plotly_chart(fig_periodo, use_container_width=True)
+    safe_plotly_chart(fig_periodo, key="chart_periodo_dia")
 elif nivel == "Semana":
-    st.plotly_chart(grafico_diario(df_filtrado), use_container_width=True)
+    safe_plotly_chart(grafico_diario(df_filtrado), key="chart_periodo_semana_diario")
 else:
-    st.plotly_chart(grafico_semanal(df_filtrado), use_container_width=True)
+    safe_plotly_chart(grafico_semanal(df_filtrado), key="chart_periodo_mes_semanal")
 
 tab1, tab2, tab3 = st.tabs(["Predicción diaria", "Consumo semanal", "Consumo mensual"])
 
 with tab1:
-    st.plotly_chart(grafico_diario(pred_diaria), use_container_width=True)
-    st.dataframe(pivot_predicciones(pred_diaria), use_container_width=True, hide_index=True)
+    safe_plotly_chart(grafico_diario(pred_diaria), key="chart_general_diario")
+    safe_dataframe(pivot_predicciones(pred_diaria), use_container_width=True, hide_index=True, key="df_pred_diaria_general")
 
 with tab2:
-    st.plotly_chart(grafico_semanal(pred_diaria), use_container_width=True)
-    st.dataframe(pred_semanal, use_container_width=True, hide_index=True)
+    safe_plotly_chart(grafico_semanal(pred_diaria), key="chart_general_semanal")
+    safe_dataframe(pred_semanal, use_container_width=True, hide_index=True, key="df_pred_semanal_general")
 
 with tab3:
-    st.plotly_chart(grafico_mensual(pred_diaria), use_container_width=True)
-    st.dataframe(pred_mensual, use_container_width=True, hide_index=True)
+    safe_plotly_chart(grafico_mensual(pred_diaria), key="chart_general_mensual")
+    safe_dataframe(pred_mensual, use_container_width=True, hide_index=True, key="df_pred_mensual_general")
 
 excel_buffer = crear_excel_descargable(
     pred_wide=pred_wide,
@@ -1669,5 +1940,6 @@ st.download_button(
     data=excel_buffer,
     file_name="predicciones_demanda.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True
+    use_container_width=True,
+    key="download_predicciones_excel"
 )
