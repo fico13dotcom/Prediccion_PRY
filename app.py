@@ -1458,7 +1458,7 @@ with st.sidebar:
 
     modo = st.radio(
         "Modo de ejecución",
-        ["Archivo cargado", "Predicción futura 6 meses"],
+        ["Archivo cargado", "Predicción futura"],
         help=(
             "Archivo cargado: predice exactamente las fechas incluidas en el archivo y permite comparar contra valores reales. "
             "Predicción futura: crea fechas futuras y estima demanda sin comparar contra valores reales."
@@ -1599,7 +1599,7 @@ if modo == "Archivo cargado":
                 mostrar_advertencia_suave(
                     f"Este archivo cubre aproximadamente del <b>{fecha_archivo_min}</b> al <b>{fecha_archivo_max}</b>. "
                     "Al presionar <b>Generar predicción</b>, la app calculará predicciones para esas mismas fechas. "
-                    "Si quieres proyectar después de ese periodo, cambia al modo <b>Predicción futura 6 meses</b>."
+                    "Si quieres proyectar después de ese periodo, cambia al modo <b>Predicción futura</b>."
                 )
     except Exception:
         pass
