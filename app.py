@@ -59,6 +59,12 @@ MESES_ES = {
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
 }
 
+MESES_ABREV_ES = {
+    1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
+    5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
+    9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"
+}
+
 
 # ============================================================
 # ESTILOS
@@ -68,38 +74,61 @@ MESES_ES = {
 st.markdown(
     """
     <style>
+    /* ============================================================
+       TEMA VISUAL ROBUSTO - MODO CLARO FORZADO
+       Objetivo: evitar que el tema oscuro del navegador/Streamlit
+       deje zonas negras o texto invisible.
+       ============================================================ */
+
     :root {
-        --nb-bg-0: #070B14;
-        --nb-bg-1: #0B1220;
-        --nb-bg-2: #111827;
-        --nb-bg-3: #172033;
-        --nb-card: #111827;
-        --nb-card-soft: #162238;
-        --nb-border: #334155;
-        --nb-border-soft: rgba(148, 163, 184, 0.26);
-        --nb-text: #F8FAFC;
-        --nb-text-soft: #CBD5E1;
-        --nb-text-muted: #94A3B8;
-        --nb-primary: #8B5CF6;
-        --nb-primary-2: #38BDF8;
-        --nb-accent: #F97316;
-        --nb-success: #22C55E;
-        --nb-warning-bg: #3B2A10;
+        color-scheme: light !important;
+        --nb-bg: #F8FAFC;
+        --nb-bg-soft: #EEF2F7;
+        --nb-card: #FFFFFF;
+        --nb-card-soft: #F8FAFC;
+        --nb-border: #CBD5E1;
+        --nb-border-soft: rgba(148, 163, 184, 0.32);
+        --nb-text: #0F172A;
+        --nb-text-soft: #334155;
+        --nb-text-muted: #64748B;
+        --nb-primary: #2563EB;
+        --nb-primary-dark: #1D4ED8;
+        --nb-primary-soft: #DBEAFE;
+        --nb-accent: #7C3AED;
+        --nb-accent-soft: #EDE9FE;
+        --nb-info: #0EA5E9;
+        --nb-info-soft: #E0F2FE;
+        --nb-warning-bg: #FEF3C7;
         --nb-warning-border: #F59E0B;
-        --nb-warning-text: #FDE68A;
-        --nb-shadow: rgba(0, 0, 0, 0.32);
+        --nb-warning-text: #92400E;
+        --nb-success: #16A34A;
+        --nb-shadow: rgba(15, 23, 42, 0.08);
+    }
+
+    html,
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"] {
+        background: var(--nb-bg) !important;
+        color: var(--nb-text) !important;
+        color-scheme: light !important;
     }
 
     .stApp {
         background:
-            radial-gradient(circle at top left, rgba(139, 92, 246, 0.16), transparent 32%),
-            radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 34%),
-            linear-gradient(135deg, var(--nb-bg-0) 0%, var(--nb-bg-1) 48%, #111126 100%);
-        color: var(--nb-text);
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
+            radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
+            linear-gradient(180deg, #F8FAFC 0%, #EEF2F7 100%) !important;
     }
 
-    .main {
-        background: transparent;
+    .main,
+    .block-container,
+    section.main,
+    [data-testid="stMain"] {
+        background: transparent !important;
+        color: var(--nb-text) !important;
     }
 
     .block-container {
@@ -107,13 +136,37 @@ st.markdown(
         padding-bottom: 3rem;
     }
 
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #111827 0%, #0B1220 100%);
-        border-right: 1px solid var(--nb-border-soft);
+    /* Texto global */
+    h1, h2, h3, h4, h5, h6,
+    p, li, label, span,
+    .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown span {
+        color: var(--nb-text) !important;
     }
 
-    [data-testid="stSidebar"] * {
-        color: var(--nb-text-soft);
+    small,
+    [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] * {
+        color: var(--nb-text-muted) !important;
+    }
+
+    code {
+        background: #E2E8F0 !important;
+        color: #0F172A !important;
+        padding: 2px 6px;
+        border-radius: 6px;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"],
+    [data-testid="stSidebarContent"] {
+        background: #FFFFFF !important;
+        color: var(--nb-text) !important;
+        border-right: 1px solid var(--nb-border-soft) !important;
+    }
+
+    [data-testid="stSidebar"] *,
+    [data-testid="stSidebarContent"] * {
+        color: var(--nb-text-soft) !important;
     }
 
     [data-testid="stSidebar"] h1,
@@ -123,37 +176,29 @@ st.markdown(
         color: var(--nb-text) !important;
     }
 
-    h1, h2, h3, h4, h5, h6,
-    p, li, label, span {
-        color: inherit;
-    }
-
+    /* Hero */
     .hero {
         padding: 30px 32px;
-        border-radius: 26px;
-        background:
-            radial-gradient(circle at top left, rgba(249,115,22,0.24), transparent 30%),
-            radial-gradient(circle at top right, rgba(56,189,248,0.24), transparent 32%),
-            linear-gradient(135deg, #312E81 0%, #4C1D95 48%, #6D28D9 100%);
-        color: #FFFFFF;
-        border: 1px solid rgba(196,181,253,0.28);
-        box-shadow: 0 22px 46px var(--nb-shadow);
+        border-radius: 24px;
+        background: linear-gradient(135deg, #4F46E5 0%, #2563EB 52%, #0EA5E9 100%) !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 16px 36px rgba(37, 99, 235, 0.18);
+        border: 1px solid rgba(255,255,255,0.32);
         margin-bottom: 24px;
     }
 
     .hero h1 {
+        color: #FFFFFF !important;
         font-size: 2.2rem;
         font-weight: 850;
-        margin: 0;
+        margin: 0 0 10px 0;
         letter-spacing: -0.03em;
-        color: #FFFFFF !important;
     }
 
     .hero p {
-        color: rgba(255,255,255,0.92) !important;
+        color: rgba(255,255,255,0.94) !important;
         font-size: 1.02rem;
-        margin-top: 10px;
-        margin-bottom: 0;
+        margin: 0;
         max-width: 980px;
         line-height: 1.55;
     }
@@ -162,21 +207,25 @@ st.markdown(
         color: var(--nb-text) !important;
         font-size: 1.28rem;
         font-weight: 850;
-        margin: 16px 0 8px 0;
+        margin: 16px 0 10px 0;
         letter-spacing: -0.01em;
     }
 
+    /* Tarjetas y cajas propias */
     .kpi-card,
+    .info-box,
+    .mode-box,
+    .insight,
     div[data-testid="stMetric"] {
-        background: linear-gradient(180deg, rgba(17,24,39,0.96), rgba(15,23,42,0.94));
-        border: 1px solid var(--nb-border-soft);
-        border-radius: 22px;
-        padding: 18px 20px;
-        box-shadow: 0 14px 32px var(--nb-shadow);
-        color: var(--nb-text);
+        background: #FFFFFF !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        border-radius: 18px !important;
+        color: var(--nb-text) !important;
+        box-shadow: 0 10px 24px var(--nb-shadow);
     }
 
     .kpi-card {
+        padding: 18px 20px;
         min-height: 120px;
     }
 
@@ -197,9 +246,65 @@ st.markdown(
     }
 
     .kpi-sub {
-        color: var(--nb-text-soft) !important;
+        color: var(--nb-text-muted) !important;
         font-size: 0.9rem;
         margin-top: 8px;
+    }
+
+    .info-box,
+    .mode-box,
+    .insight,
+    .soft-warning {
+        padding: 14px 16px;
+        margin: 10px 0 16px 0;
+        line-height: 1.58;
+    }
+
+    .info-box {
+        border-left: 5px solid var(--nb-info) !important;
+        background: #FFFFFF !important;
+    }
+
+    .mode-box {
+        border-left: 5px solid var(--nb-accent) !important;
+        background: #FFFFFF !important;
+    }
+
+    .insight {
+        border-left: 5px solid var(--nb-primary) !important;
+        font-weight: 650;
+        background: #FFFFFF !important;
+    }
+
+    .soft-warning {
+        background: var(--nb-warning-bg) !important;
+        border: 1px solid var(--nb-warning-border) !important;
+        border-left: 5px solid var(--nb-warning-border) !important;
+        border-radius: 16px;
+        color: var(--nb-warning-text) !important;
+        box-shadow: 0 8px 20px rgba(146, 64, 14, 0.08);
+    }
+
+    .info-box *, .mode-box *, .insight * {
+        color: var(--nb-text-soft) !important;
+    }
+
+    .soft-warning * {
+        color: var(--nb-warning-text) !important;
+    }
+
+    .info-box b, .mode-box b, .insight b,
+    .info-box strong, .mode-box strong, .insight strong {
+        color: var(--nb-text) !important;
+    }
+
+    /* Métricas nativas */
+    div[data-testid="stMetric"] {
+        padding: 14px !important;
+    }
+
+    div[data-testid="stMetric"] * {
+        color: var(--nb-text) !important;
     }
 
     div[data-testid="stMetric"] label,
@@ -207,133 +312,230 @@ st.markdown(
         color: var(--nb-text-muted) !important;
     }
 
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    /* Botones */
+    .stButton > button,
+    .stDownloadButton > button,
+    button[kind="primary"],
+    button[data-testid="baseButton-primary"] {
+        background: linear-gradient(135deg, #4F46E5 0%, #2563EB 100%) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(37,99,235,0.22) !important;
+        border-radius: 14px !important;
+        padding: 0.70rem 1.1rem !important;
+        font-weight: 800 !important;
+        box-shadow: 0 12px 24px rgba(37,99,235,0.18) !important;
+    }
+
+    .stButton > button:hover,
+    .stDownloadButton > button:hover,
+    button[kind="primary"]:hover,
+    button[data-testid="baseButton-primary"]:hover {
+        filter: brightness(1.05);
+        color: #FFFFFF !important;
+        border: 1px solid rgba(37,99,235,0.35) !important;
+    }
+
+    .stButton > button:disabled,
+    .stDownloadButton > button:disabled,
+    button:disabled {
+        background: #E2E8F0 !important;
+        color: #94A3B8 !important;
+        border: 1px solid #CBD5E1 !important;
+        box-shadow: none !important;
+    }
+
+    /* Expander: evita encabezados negros por tema del navegador */
+    [data-testid="stExpander"] {
+        background: #FFFFFF !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 8px 20px var(--nb-shadow);
+    }
+
+    [data-testid="stExpander"] details,
+    [data-testid="stExpander"] details > div,
+    [data-testid="stExpanderDetails"] {
+        background: #FFFFFF !important;
+        color: var(--nb-text-soft) !important;
+    }
+
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary:hover {
+        background: #F8FAFC !important;
+        color: var(--nb-text) !important;
+        border-bottom: 1px solid var(--nb-border-soft) !important;
+        font-weight: 800 !important;
+    }
+
+    [data-testid="stExpander"] summary *,
+    [data-testid="stExpanderDetails"] * {
+        color: var(--nb-text-soft) !important;
+    }
+
+    [data-testid="stExpander"] summary * {
         color: var(--nb-text) !important;
     }
 
-    .info-box,
-    .mode-box,
-    .insight {
-        background: linear-gradient(180deg, rgba(23,32,51,0.98), rgba(17,24,39,0.98));
-        border: 1px solid var(--nb-border-soft);
-        border-radius: 18px;
-        padding: 15px 17px;
-        margin: 10px 0 16px 0;
+    /* File uploader: evita área negra en modo oscuro del navegador */
+    [data-testid="stFileUploader"],
+    [data-testid="stFileUploader"] > div,
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploaderDropzone"] {
+        background: #FFFFFF !important;
         color: var(--nb-text-soft) !important;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
-        line-height: 1.58;
+        border-color: var(--nb-border) !important;
     }
 
-    .info-box {
-        border-left: 5px solid var(--nb-primary-2);
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploaderDropzone"] {
+        background: #F8FAFC !important;
+        border: 1px dashed #94A3B8 !important;
+        border-radius: 14px !important;
     }
 
-    .mode-box {
-        border-left: 5px solid var(--nb-primary);
+    [data-testid="stFileUploader"] *,
+    [data-testid="stFileUploaderDropzone"] * {
+        color: var(--nb-text-soft) !important;
     }
 
-    .insight {
-        border-left: 5px solid var(--nb-accent);
-        font-weight: 650;
+    [data-testid="stUploadedFile"] {
+        background: #FFFFFF !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        border-radius: 12px !important;
     }
 
-    .info-box b,
-    .mode-box b,
-    .insight b,
-    .info-box strong,
-    .mode-box strong,
-    .insight strong {
-        color: #FFFFFF !important;
+    /* Inputs, selects, radios */
+    input,
+    textarea,
+    [data-baseweb="input"] > div,
+    [data-baseweb="select"] > div,
+    [data-baseweb="textarea"] > div {
+        background: #FFFFFF !important;
+        color: var(--nb-text) !important;
+        border-color: var(--nb-border) !important;
+        color-scheme: light !important;
     }
 
-    .soft-warning {
-        background: linear-gradient(180deg, rgba(59,42,16,0.98), rgba(48,32,8,0.98));
-        border: 1px solid rgba(245,158,11,0.55);
-        border-left: 5px solid var(--nb-warning-border);
-        border-radius: 18px;
-        padding: 14px 16px;
-        margin: 10px 0 16px 0;
-        color: var(--nb-warning-text) !important;
-        line-height: 1.58;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+    input::placeholder,
+    textarea::placeholder {
+        color: var(--nb-text-muted) !important;
     }
 
-    .soft-warning b,
-    .soft-warning strong {
-        color: #FFF7ED !important;
+    [data-baseweb="select"] *,
+    [data-baseweb="popover"] *,
+    [role="listbox"] *,
+    [data-baseweb="menu"] * {
+        color: var(--nb-text) !important;
+        background-color: inherit;
     }
 
-    .stButton > button {
-        background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%);
-        color: white !important;
-        border: 1px solid rgba(255,255,255,0.14);
-        border-radius: 16px;
-        padding: 0.75rem 1.15rem;
-        font-weight: 850;
-        box-shadow: 0 14px 28px rgba(37,99,235,0.28);
+    [data-baseweb="popover"],
+    [role="listbox"],
+    [data-baseweb="menu"] {
+        background: #FFFFFF !important;
+        color: var(--nb-text) !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        box-shadow: 0 12px 28px var(--nb-shadow) !important;
     }
 
-    .stButton > button:hover {
-        border: 1px solid rgba(255,255,255,0.28);
-        filter: brightness(1.08);
-        color: white !important;
+    [data-testid="stRadio"] label,
+    [data-testid="stRadio"] *,
+    [data-testid="stDateInput"] label,
+    [data-testid="stNumberInput"] label,
+    [data-testid="stSlider"] label,
+    [data-testid="stSelectbox"] label {
+        color: var(--nb-text-soft) !important;
     }
 
-    .stDownloadButton > button {
-        border-radius: 16px;
-        font-weight: 800;
-        background: linear-gradient(135deg, #0EA5E9 0%, #7C3AED 100%);
-        color: white !important;
-        border: 1px solid rgba(255,255,255,0.14);
+    /* Tabs */
+    [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: transparent !important;
     }
 
+    [data-baseweb="tab"] {
+        background: #E2E8F0 !important;
+        color: #334155 !important;
+        border-radius: 12px 12px 0 0 !important;
+        padding: 10px 16px !important;
+        font-weight: 750 !important;
+    }
+
+    [aria-selected="true"][data-baseweb="tab"] {
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        border-bottom: none !important;
+    }
+
+    [data-baseweb="tab"] * {
+        color: inherit !important;
+    }
+
+    /* Dataframes y tablas */
     div[data-testid="stDataFrame"],
     div[data-testid="stTable"] {
-        border-radius: 16px;
+        background: #FFFFFF !important;
+        border-radius: 14px !important;
         overflow: hidden;
-        border: 1px solid var(--nb-border-soft);
-        box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+        border: 1px solid var(--nb-border-soft) !important;
+        box-shadow: 0 8px 20px var(--nb-shadow);
     }
 
-    /* Widgets */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="textarea"] > div {
-        background-color: #111827 !important;
-        border-color: var(--nb-border) !important;
+    div[data-testid="stDataFrame"] *,
+    div[data-testid="stTable"] * {
         color: var(--nb-text) !important;
     }
 
-    div[data-baseweb="radio"] label,
-    div[data-testid="stRadio"] label,
-    div[data-testid="stDateInput"] label,
-    div[data-testid="stNumberInput"] label,
-    div[data-testid="stSlider"] label,
-    div[data-testid="stFileUploader"] label {
+    /* Alertas */
+    div[data-testid="stAlert"],
+    div[data-baseweb="notification"] {
+        border-radius: 16px !important;
+        border: 1px solid var(--nb-border-soft) !important;
+        background: #FFFFFF !important;
         color: var(--nb-text-soft) !important;
     }
 
-    /* Expander */
-    details {
-        background: rgba(17,24,39,0.72);
-        border: 1px solid var(--nb-border-soft);
-        border-radius: 14px;
-        padding: 2px 6px;
-    }
-
-    summary {
-        color: var(--nb-text) !important;
-        font-weight: 750;
-    }
-
-    /* Alerts nativos de Streamlit: mejora contraste en modo oscuro */
-    div[data-testid="stAlert"] {
-        border-radius: 16px;
-        border: 1px solid var(--nb-border-soft);
+    div[data-testid="stAlert"] *,
+    div[data-baseweb="notification"] * {
+        color: var(--nb-text-soft) !important;
     }
 
     hr {
-        border-color: var(--nb-border-soft);
+        border-color: var(--nb-border-soft) !important;
+    }
+
+    /* Plotly: asegura contenedor claro aunque el browser esté en dark mode */
+    .js-plotly-plot,
+    .plotly,
+    .plot-container,
+    .svg-container {
+        background: #FFFFFF !important;
+        color: var(--nb-text) !important;
+    }
+
+    /* Compatibilidad si el navegador fuerza modo oscuro */
+    @media (prefers-color-scheme: dark) {
+        html,
+        body,
+        .stApp,
+        [data-testid="stAppViewContainer"] {
+            background: var(--nb-bg) !important;
+            color: var(--nb-text) !important;
+            color-scheme: light !important;
+        }
+
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarContent"],
+        [data-testid="stExpander"],
+        [data-testid="stFileUploader"] section,
+        [data-testid="stFileUploaderDropzone"],
+        div[data-testid="stMetric"],
+        div[data-testid="stDataFrame"] {
+            background: #FFFFFF !important;
+            color: var(--nb-text) !important;
+        }
     }
     </style>
     """,
@@ -931,18 +1133,19 @@ def formato_decimal(valor, decimales=2):
 
 def aplicar_estilo_barras(fig, texttemplate="%{text}"):
     """
-    Centra las etiquetas dentro de las barras para que los gráficos sean más legibles.
+    Aplica etiquetas de barras legibles en tema claro.
+    En lugar de forzarlas en blanco dentro de la barra, usa posición automática
+    y texto oscuro para que se vea correctamente en cualquier navegador.
     """
     fig.update_traces(
         texttemplate=texttemplate,
-        textposition="inside",
-        insidetextanchor="middle",
-        textfont=dict(size=12, color="#FFFFFF"),
+        textposition="auto",
+        textfont=dict(size=12, color="#0F172A"),
         cliponaxis=False
     )
     fig.update_layout(
         uniformtext_minsize=10,
-        uniformtext_mode="show"
+        uniformtext_mode="hide"
     )
     return fig
 
@@ -950,40 +1153,45 @@ def aplicar_estilo_barras(fig, texttemplate="%{text}"):
 
 def aplicar_tema_plotly(fig):
     """
-    Aplica una paleta oscura y consistente a cualquier gráfico Plotly.
-    Esto evita textos invisibles cuando Streamlit está en modo oscuro.
+    Aplica una paleta clara y consistente a cualquier gráfico Plotly.
+    Se fuerza tema claro para que no dependa del tema del navegador.
     """
-    colorway = ["#38BDF8", "#8B5CF6", "#F97316", "#22C55E", "#E879F9", "#FACC15"]
+    colorway = ["#2563EB", "#0EA5E9", "#F97316", "#16A34A", "#9333EA", "#DC2626"]
 
     fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(17, 24, 39, 0.98)",
-        plot_bgcolor="rgba(11, 18, 32, 0.98)",
-        font=dict(color="#E5E7EB"),
-        title_font=dict(color="#F8FAFC", size=20),
+        template="plotly_white",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        font=dict(color="#0F172A", size=13),
+        title_font=dict(color="#0F172A", size=22),
         legend=dict(
-            bgcolor="rgba(17, 24, 39, 0.55)",
-            bordercolor="rgba(148, 163, 184, 0.25)",
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#CBD5E1",
             borderwidth=1,
-            font=dict(color="#E5E7EB")
+            font=dict(color="#0F172A")
+        ),
+        hoverlabel=dict(
+            bgcolor="#FFFFFF",
+            bordercolor="#CBD5E1",
+            font=dict(color="#0F172A")
         ),
         colorway=colorway
     )
 
     fig.update_xaxes(
-        title_font=dict(color="#CBD5E1"),
-        tickfont=dict(color="#CBD5E1"),
-        gridcolor="rgba(148, 163, 184, 0.18)",
-        zerolinecolor="rgba(148, 163, 184, 0.24)",
-        linecolor="rgba(148, 163, 184, 0.28)"
+        title_font=dict(color="#334155"),
+        tickfont=dict(color="#334155"),
+        gridcolor="rgba(148,163,184,0.18)",
+        zerolinecolor="rgba(148,163,184,0.26)",
+        linecolor="#CBD5E1"
     )
 
     fig.update_yaxes(
-        title_font=dict(color="#CBD5E1"),
-        tickfont=dict(color="#CBD5E1"),
-        gridcolor="rgba(148, 163, 184, 0.18)",
-        zerolinecolor="rgba(148, 163, 184, 0.24)",
-        linecolor="rgba(148, 163, 184, 0.28)"
+        title_font=dict(color="#334155"),
+        tickfont=dict(color="#334155"),
+        gridcolor="rgba(148,163,184,0.18)",
+        zerolinecolor="rgba(148,163,184,0.26)",
+        linecolor="#CBD5E1"
     )
 
     return fig
@@ -1133,10 +1341,32 @@ def grafico_diario(df_largo):
 
 
 def grafico_semanal(df_largo):
-    df_plot = df_largo.groupby(["anio", "semana_anio", "tipo_plato"], as_index=False)["cantidad_predicha"].sum()
-    df_plot["periodo"] = df_plot["anio"].astype(str) + " - S" + df_plot["semana_anio"].astype(str).str.zfill(2)
+    df_plot = (
+        df_largo
+        .groupby(["anio", "semana_anio", "tipo_plato"], as_index=False)["cantidad_predicha"]
+        .sum()
+    )
+
+    if df_plot.empty:
+        fig = px.bar(title="Consumo semanal estimado")
+        return aplicar_tema_plotly(fig)
+
+    # Fecha aproximada de inicio de semana ISO para ordenar cronológicamente.
+    df_plot["fecha_semana"] = pd.to_datetime(
+        df_plot["anio"].astype(str)
+        + "-W"
+        + df_plot["semana_anio"].astype(str).str.zfill(2)
+        + "-1",
+        format="%G-W%V-%u",
+        errors="coerce"
+    )
+
+    df_plot = df_plot.sort_values(["fecha_semana", "tipo_plato"])
     df_plot["Producto"] = df_plot["tipo_plato"].map(nombre_producto)
-    df_plot["Etiqueta"] = df_plot["cantidad_predicha"].apply(formato_entero)
+
+    # Etiqueta corta y legible: May S18, Jun S22, etc.
+    df_plot["mes_abrev"] = df_plot["fecha_semana"].dt.month.map(MESES_ABREV_ES)
+    df_plot["periodo"] = df_plot["mes_abrev"] + " S" + df_plot["semana_anio"].astype(str).str.zfill(2)
 
     fig = px.bar(
         df_plot,
@@ -1144,18 +1374,32 @@ def grafico_semanal(df_largo):
         y="cantidad_predicha",
         color="Producto",
         barmode="group",
-        text="Etiqueta",
         labels={"periodo": "Semana", "cantidad_predicha": "Cantidad predicha", "Producto": "Producto"},
-        title="Consumo semanal estimado"
+        title="Consumo semanal estimado",
+        hover_data={
+            "fecha_semana": "|%Y-%m-%d",
+            "periodo": True,
+            "cantidad_predicha": ":,.0f"
+        }
     )
-    fig.update_layout(height=430, title_font_size=20, legend_title_text="Producto", margin=dict(l=20, r=20, t=60, b=20))
-    aplicar_estilo_barras(fig)
-    return fig
 
+    fig.update_layout(
+        height=450,
+        title_font_size=20,
+        legend_title_text="Producto",
+        margin=dict(l=20, r=20, t=60, b=80),
+        xaxis_tickangle=-35,
+    )
+
+    # En semanal se ocultan etiquetas dentro de barras para evitar saturación visual.
+    fig.update_traces(textposition="none")
+
+    return aplicar_tema_plotly(fig)
 
 def grafico_mensual(df_largo):
     df_plot = df_largo.groupby(["anio", "mes", "mes_nombre", "tipo_plato"], as_index=False)["cantidad_predicha"].sum()
-    df_plot["periodo"] = df_plot["anio"].astype(str) + " - " + df_plot["mes"].astype(str).str.zfill(2)
+    df_plot = df_plot.sort_values(["anio", "mes", "tipo_plato"])
+    df_plot["periodo"] = df_plot["mes_nombre"] + " " + df_plot["anio"].astype(str)
     df_plot["Producto"] = df_plot["tipo_plato"].map(nombre_producto)
     df_plot["Etiqueta"] = df_plot["cantidad_predicha"].apply(formato_entero)
 
@@ -1169,10 +1413,9 @@ def grafico_mensual(df_largo):
         labels={"periodo": "Mes", "cantidad_predicha": "Cantidad predicha", "Producto": "Producto"},
         title="Consumo mensual estimado"
     )
-    fig.update_layout(height=430, title_font_size=20, legend_title_text="Producto", margin=dict(l=20, r=20, t=60, b=20))
+    fig.update_layout(height=430, title_font_size=20, legend_title_text="Producto", margin=dict(l=20, r=20, t=60, b=60), xaxis_tickangle=-20)
     aplicar_estilo_barras(fig)
-    return fig
-
+    return aplicar_tema_plotly(fig)
 
 def grafico_mae_rmse_por_producto(metricas):
     df_plot = metricas[["Modelo", "MAE", "RMSE"]].copy()
@@ -1918,8 +2161,36 @@ with tab1:
     safe_dataframe(pivot_predicciones(pred_diaria), use_container_width=True, hide_index=True, key="df_pred_diaria_general")
 
 with tab2:
-    safe_plotly_chart(grafico_semanal(pred_diaria), key="chart_general_semanal")
-    safe_dataframe(pred_semanal, use_container_width=True, hide_index=True, key="df_pred_semanal_general")
+    meses_tab_semanal = pred_diaria[["anio", "mes", "mes_nombre"]].drop_duplicates().sort_values(["anio", "mes"])
+    opciones_tab_semanal = ["Todos los meses"] + [
+        f"{int(row.anio)}-{int(row.mes):02d} | {row.mes_nombre}"
+        for _, row in meses_tab_semanal.iterrows()
+    ]
+
+    opcion_tab_semanal = st.selectbox(
+        "Filtrar gráfico semanal por mes",
+        opciones_tab_semanal,
+        help="Usa este filtro para ver solo las semanas de un mes específico, por ejemplo Mayo.",
+        key="selectbox_tab_semanal_mes"
+    )
+
+    df_tab_semanal = pred_diaria.copy()
+    if opcion_tab_semanal != "Todos los meses":
+        anio_tab = int(opcion_tab_semanal.split("-")[0])
+        mes_tab = int(opcion_tab_semanal.split("-")[1].split(" ")[0])
+        df_tab_semanal = pred_diaria[
+            (pred_diaria["anio"] == anio_tab) &
+            (pred_diaria["mes"] == mes_tab)
+        ].copy()
+
+    pred_semanal_filtrada = (
+        df_tab_semanal
+        .groupby(["anio", "semana_anio", "tipo_plato"], as_index=False)["cantidad_predicha"]
+        .sum()
+    )
+
+    safe_plotly_chart(grafico_semanal(df_tab_semanal), key="chart_general_semanal")
+    safe_dataframe(pred_semanal_filtrada, use_container_width=True, hide_index=True, key="df_pred_semanal_general")
 
 with tab3:
     safe_plotly_chart(grafico_mensual(pred_diaria), key="chart_general_mensual")
